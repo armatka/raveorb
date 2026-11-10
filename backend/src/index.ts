@@ -33,7 +33,19 @@ app.get("/api/stats", (_req, res: Response) => {
 app.post("/api/events", (req: Request, res: Response) => {
   const body = req.body as Partial<EventEntry>;
 
-  if (!body.title || !body.type || !body.city || !body.date) {
+  if (
+    !body.title
+    || !body.type
+    || !body.venueId
+    || !body.venueName
+    || !body.city
+    || !body.countryCode
+    || !body.date
+    || !body.startTime
+    || !body.endTime
+    || !body.timezone
+    || !body.source
+  ) {
     return res.status(400).json({ error: "Missing required fields" });
   }
 
@@ -41,16 +53,30 @@ app.post("/api/events", (req: Request, res: Response) => {
     id: `evt-${Date.now()}`,
     title: body.title,
     type: body.type,
-    venueId: body.venueId ?? "ven-temp",
+    venueId: body.venueId,
+    venueName: body.venueName,
     city: body.city,
+    countryCode: body.countryCode,
+    address: body.address,
+    latitude: body.latitude,
+    longitude: body.longitude,
     date: body.date,
-    startTime: body.startTime ?? "22:00",
-    endTime: body.endTime ?? "03:00",
+    startTime: body.startTime,
+    endTime: body.endTime,
+    timezone: body.timezone,
     artists: body.artists ?? [],
-    spend: Number(body.spend ?? 0),
-    vibeScore: Number(body.vibeScore ?? 0),
-    durationHours: Number(body.durationHours ?? 4),
-    notes: body.notes ?? "",
+    genres: body.genres ?? [],
+    description: body.description ?? "",
+    imageUrl: body.imageUrl,
+    ticketUrl: body.ticketUrl,
+    eventUrl: body.eventUrl,
+    priceMin: body.priceMin,
+    priceMax: body.priceMax,
+    currency: body.currency,
+    source: body.source,
+    sourceEventId: body.sourceEventId,
+    ageRestriction: body.ageRestriction,
+    status: body.status,
   };
 
   events.push(nextEvent);

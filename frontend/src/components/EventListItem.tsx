@@ -2,7 +2,7 @@ import { Link } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
 
 import { EventEntry } from "../types/event";
-import { formatCurrency } from "../lib/formatCurrency";
+import { formatEventPrice, formatEventSchedule } from "../lib/eventFormatting";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
 
@@ -23,10 +23,11 @@ export function EventListItem({ event }: EventListItemProps) {
         <Text style={styles.title}>{event.title}</Text>
         <Text style={styles.type}>{event.type}</Text>
       </View>
-      <Text style={styles.meta}>{event.city}</Text>
-      <Text style={styles.meta}>{event.date} · {event.startTime}–{event.endTime}</Text>
-      <Text style={styles.meta}>{event.artists.join(", ")}</Text>
-      <Text style={styles.footer}>Vibe {event.vibeScore}/100 · {formatCurrency(event.spend, "USD")}</Text>
+      <Text style={styles.meta}>{event.venueName} · {event.city}, {event.countryCode}</Text>
+      <Text style={styles.meta}>{formatEventSchedule(event)}</Text>
+      <Text style={styles.meta}>{event.genres.join(" · ")}</Text>
+      <Text style={styles.artists} numberOfLines={1}>{event.artists.join(", ")}</Text>
+      <Text style={styles.footer}>{formatEventPrice(event)}</Text>
     </Link>
   );
 }
@@ -67,5 +68,10 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontWeight: "600",
     marginTop: spacing.sm,
+  },
+  artists: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    marginTop: spacing.xs,
   },
 });

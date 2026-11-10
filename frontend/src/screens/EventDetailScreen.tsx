@@ -13,12 +13,9 @@ import {
 import EventDetailHeader from "../components/EventDetailHeader";
 import { Screen } from "../components/Screen";
 import { mockEvents, mockVenues } from "../data/mockData";
-import {
-  eventStatusStorage,
-  type EventStatus,
-} from "../lib/eventStatusStorage";
+import { eventStatusStorage, type EventStatus } from "../lib/eventStatusStorage";
+import { formatEventDate, formatEventPrice, formatEventSchedule } from "../lib/eventFormatting";
 import { colors } from "../theme/colors";
-import { formatCurrency } from "../lib/formatCurrency";
 import { spacing } from "../theme/spacing";
 
 const statusOptions: Array<{
@@ -26,21 +23,9 @@ const statusOptions: Array<{
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
 }> = [
-  {
-    value: "interested",
-    label: "Interested",
-    icon: "heart-outline",
-  },
-  {
-    value: "going",
-    label: "Going",
-    icon: "calendar-outline",
-  },
-  {
-    value: "attended",
-    label: "Attended",
-    icon: "checkmark-circle-outline",
-  },
+  { value: "interested", label: "Interested", icon: "heart-outline" },
+  { value: "going", label: "Going", icon: "calendar-outline" },
+  { value: "attended", label: "Attended", icon: "checkmark-circle-outline" },
 ];
 
 export default function EventDetailScreen() {
@@ -65,23 +50,16 @@ export default function EventDetailScreen() {
       }
 
       setLoadingStatus(true);
-
       eventStatusStorage
         .get(id)
         .then((savedStatus) => {
-          if (isCurrent) {
-            setStatus(savedStatus);
-          }
+          if (isCurrent) setStatus(savedStatus);
         })
         .catch(() => {
-          if (isCurrent) {
-            setStatus(null);
-          }
+          if (isCurrent) setStatus(null);
         })
         .finally(() => {
-          if (isCurrent) {
-            setLoadingStatus(false);
-          }
+          if (isCurrent) setLoadingStatus(false);
         });
 
       return () => {
@@ -94,15 +72,9 @@ export default function EventDetailScreen() {
     return (
       <Screen>
         <View style={styles.notFound}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={42}
-            color={colors.error}
-          />
+          <Ionicons name="alert-circle-outline" size={42} color={colors.error} />
           <Text style={styles.notFoundTitle}>Event not found</Text>
-          <Text style={styles.notFoundText}>
-            This event may no longer be available.
-          </Text>
+          <Text style={styles.notFoundText}>This event may no longer be available.</Text>
           <Pressable style={styles.secondaryButton} onPress={() => router.back()}>
             <Text style={styles.secondaryButtonText}>Go back</Text>
           </Pressable>
@@ -111,38 +83,9 @@ export default function EventDetailScreen() {
     );
   }
 
-  const venueName = venue?.name ?? "Venue to be announced";
-  const location = `${venueName} · ${event.city}`;
-  const formattedDate = `${event.date} · ${event.startTime}`;
-
-  const selectStatus = async (nextStatus: EventStatus) => {
-    try {
-      await eventStatusStorage.set(event.id, nextStatus);
-      setStatus(nextStatus);
-
-      if (nextStatus === "attended") {
-        Alert.alert(
-          "Add this experience to My Nights?",
-          "RaveOrb can prefill your journal entry with the event details.",
-          [
-            {
-              text: "Not now",
-              style: "cancel",
-            },
-            {
-              text: "Add to My Nights",
-              onPress: openNightForm,
-            },
-          ],
-        );
-      }
-    } catch {
-      Alert.alert(
-        "Could not update event",
-        "Your selection was not saved. Please try again.",
-      );
-    }
-  };
+  const venueName = event.venueName || venue?.name || "Venue to be announced";
+  const location = `${venueName} · ${event.city}, ${event.countryCode}`;
+  const formattedDate = formatEventSchedule(event);
 
   const openNightForm = () => {
     router.push({
@@ -157,128 +100,136 @@ export default function EventDetailScreen() {
     });
   };
 
+  const selectStatus = async (nextStatus: EventStatus) => {
+    try {
+      await eventStatusStorage.set(event.id, nextStatus);
+      setStatus(nextStatus);
+
+      if (nextStatus === "attended") {
+        Alert.alert(
+          "Add this experience to My Nights?",
+          "RaveOrb can prefill your journal entry with event details. Personal rating, cost, and notes will stay blank.",
+          [
+            { text: "Not now", style: "cancel" },
+            { text: "Add to My Nights", onPress: openNightForm },
+          ],
+        );
+      }
+    } catch {
+      Alert.alert("Could not update event", "Your selection was not saved. Please try again.");
+    }
+  };
+
   return (
     <Screen scrollable contentContainerStyle={styles.content}>
-        <EventDetailHeader
-          title={event.title}
-          date={formattedDate}
-          location={location}
-          type={event.type}
-        />
+      <EventDetailHeader
+        title={event.title}
+        date={formattedDate}
+        location={location}
+        type={event.type}
+      />
 
-        <View style={styles.statusPanel}>
-          <Text style={styles.sectionTitle}>Your plan</Text>
-          <Text style={styles.statusDescription}>
-            Save this event to your RaveOrb journey.
-          </Text>
+      <View style={styles.statusPanel}>
+        <Text style={styles.sectionTitle}>Your plan</Text>
+        <Text style={styles.statusDescription}>Save this event to your RaveOrb journey.</Text>
 
-          {loadingStatus ? (
-            <ActivityIndicator
-              color={colors.primary}
-              style={styles.statusLoader}
-            />
-          ) : (
-            <View style={styles.statusRow}>
-              {statusOptions.map((option) => {
-                const selected = status === option.value;
+        {loadingStatus ? (
+          <ActivityIndicator color={colors.primary} style={styles.statusLoader} />
+        ) : (
+          <View style={styles.statusRow}>
+            {statusOptions.map((option) => {
+              const selected = status === option.value;
+              return (
+                <Pressable
+                  key={option.value}
+                  onPress={() => selectStatus(option.value)}
+                  style={[styles.statusButton, selected && styles.statusButtonSelected]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                >
+                  <Ionicons
+                    name={option.icon}
+                    size={20}
+                    color={selected ? colors.background : colors.secondary}
+                  />
+                  <Text style={[styles.statusButtonText, selected && styles.statusButtonTextSelected]}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
 
-                return (
-                  <Pressable
-                    key={option.value}
-                    onPress={() => selectStatus(option.value)}
-                    style={[
-                      styles.statusButton,
-                      selected && styles.statusButtonSelected,
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                  >
-                    <Ionicons
-                      name={option.icon}
-                      size={20}
-                      color={selected ? colors.background : colors.secondary}
-                    />
-                    <Text
-                      style={[
-                        styles.statusButtonText,
-                        selected && styles.statusButtonTextSelected,
-                      ]}
-                    >
-                      {option.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
+        {status === "attended" ? (
+          <Pressable style={styles.primaryButton} onPress={openNightForm}>
+            <Ionicons name="book-outline" size={19} color={colors.background} />
+            <Text style={styles.primaryButtonText}>Add to My Nights</Text>
+          </Pressable>
+        ) : null}
+      </View>
 
-          {status === "attended" ? (
-            <Pressable style={styles.primaryButton} onPress={openNightForm}>
-              <Ionicons
-                name="book-outline"
-                size={19}
-                color={colors.background}
-              />
-              <Text style={styles.primaryButtonText}>Add to My Nights</Text>
-            </Pressable>
-          ) : null}
-        </View>
-
-        <View style={styles.summaryCard}>
-          <Text style={styles.sectionTitle}>At a glance</Text>
-          <View style={styles.statRow}>
-            <View style={styles.statBox}>
-              <Text style={styles.statLabel}>Vibe</Text>
-              <Text style={styles.statValue}>{event.vibeScore}/100</Text>
-            </View>
-
-            <View style={styles.statBox}>
-              <Text style={styles.statLabel}>Spend</Text>
-              <Text style={styles.statValue}>{formatCurrency(event.spend, "USD")}</Text>
-            </View>
-
-            <View style={styles.statBox}>
-              <Text style={styles.statLabel}>Duration</Text>
-              <Text style={styles.statValue}>{event.durationHours}h</Text>
-            </View>
+      <View style={styles.summaryCard}>
+        <Text style={styles.sectionTitle}>At a glance</Text>
+        <View style={styles.statRow}>
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>Date</Text>
+            <Text style={styles.statValue}>{formatEventDate(event.date)}</Text>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>Tickets</Text>
+            <Text style={styles.statValue}>{formatEventPrice(event)}</Text>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>Status</Text>
+            <Text style={styles.statValue}>{(event.status ?? "scheduled").replace("-", " ")}</Text>
           </View>
         </View>
+      </View>
 
-        <View style={styles.panel}>
-          <Text style={styles.sectionTitle}>Artist lineup</Text>
-          <View style={styles.tagRow}>
-            {event.artists.map((artist) => (
-              <View key={artist} style={styles.tag}>
-                <Text style={styles.tagText}>{artist}</Text>
-              </View>
-            ))}
-          </View>
+      <View style={styles.panel}>
+        <Text style={styles.sectionTitle}>Genres</Text>
+        <View style={styles.tagRow}>
+          {event.genres.map((genre) => (
+            <View key={genre} style={styles.tag}>
+              <Text style={styles.tagText}>{genre}</Text>
+            </View>
+          ))}
         </View>
+      </View>
 
-        <View style={styles.panel}>
-          <Text style={styles.sectionTitle}>Event notes</Text>
-          <Text style={styles.notes}>{event.notes}</Text>
-
+      <View style={styles.panel}>
+        <Text style={styles.sectionTitle}>About this event</Text>
+        <Text style={styles.notes}>{event.description}</Text>
+        <Text style={styles.sectionTitle}>Artist lineup</Text>
+        <View style={styles.tagRow}>
+          {event.artists.map((artist) => (
+            <View key={artist} style={styles.tag}>
+              <Text style={styles.tagText}>{artist}</Text>
+            </View>
+          ))}
+        </View>
+        <View style={styles.detailRow}>
+          <Ionicons name="location-outline" size={18} color={colors.secondary} />
+          <Text style={styles.detailText}>{location}</Text>
+        </View>
+        {event.address ? (
           <View style={styles.detailRow}>
-            <Ionicons
-              name="location-outline"
-              size={18}
-              color={colors.secondary}
-            />
-            <Text style={styles.detailText}>{location}</Text>
+            <Ionicons name="navigate-outline" size={18} color={colors.secondary} />
+            <Text style={styles.detailText}>{event.address}</Text>
           </View>
-
-          <View style={styles.detailRow}>
-            <Ionicons
-              name="time-outline"
-              size={18}
-              color={colors.secondary}
-            />
-            <Text style={styles.detailText}>
-              {event.startTime} to {event.endTime}
-            </Text>
-          </View>
+        ) : null}
+        <View style={styles.detailRow}>
+          <Ionicons name="time-outline" size={18} color={colors.secondary} />
+          <Text style={styles.detailText}>{event.startTime} to {event.endTime} {event.timezone}</Text>
         </View>
+        {event.ageRestriction ? (
+          <View style={styles.detailRow}>
+            <Ionicons name="id-card-outline" size={18} color={colors.secondary} />
+            <Text style={styles.detailText}>{event.ageRestriction}</Text>
+          </View>
+        ) : null}
+      </View>
     </Screen>
   );
 }
@@ -403,8 +354,9 @@ const styles = StyleSheet.create({
   },
   statValue: {
     color: colors.text,
-    fontSize: 17,
+    fontSize: 14,
     fontWeight: "800",
+    textAlign: "center",
   },
   panel: {
     backgroundColor: colors.surface,
@@ -433,7 +385,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     textTransform: "uppercase",
-    letterSpacing: 1,
+    letterSpacing: 0.6,
   },
   notes: {
     color: colors.textSecondary,
