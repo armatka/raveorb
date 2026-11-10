@@ -3,7 +3,6 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   SectionList,
@@ -24,6 +23,7 @@ import {
   type EventSection,
 } from "../../lib/eventDiscovery";
 import { eventStatusStorage, type EventStatus } from "../../lib/eventStatusStorage";
+import { showAlert } from "../../lib/showAlert";
 import { eventsRepository } from "../../services/eventsRepository";
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
@@ -56,6 +56,7 @@ export default function EventsScreen() {
   const [statuses, setStatuses] = useState<Record<string, EventStatus>>({});
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [eventLoadError, setEventLoadError] = useState<string | null>(null);
+  const [statusLoadError, setStatusLoadError] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
 
   useFocusEffect(
@@ -72,7 +73,8 @@ export default function EventsScreen() {
           } else {
             setEventLoadError(eventResult.reason instanceof Error ? eventResult.reason.message : "Could not load events.");
           }
-          setStatuses(statusResult.status === "fulfilled" ? statusResult.value : {});
+          if (statusResult.status === "fulfilled") setStatuses(statusResult.value);
+          setStatusLoadError(statusResult.status === "rejected");
         })
         .finally(() => {
           if (isCurrent) setLoadingEvents(false);
@@ -125,7 +127,7 @@ export default function EventsScreen() {
         return { ...current, [eventId]: nextStatus };
       });
     } catch {
-      Alert.alert("Could not update event", "Your status was not saved. Please try again.");
+      showAlert("Could not update event", "Your status was not saved. Please try again.");
     }
   };
 
@@ -136,6 +138,11 @@ export default function EventsScreen() {
         <Text style={styles.title}>Discover</Text>
         <Text style={styles.subtitle}>Find your next night</Text>
       </View>
+      {statusLoadError ? (
+        <Pressable onPress={() => setRetryToken((token) => token + 1)} style={styles.retryButton} accessibilityRole="button" accessibilityLabel="Retry loading event statuses">
+          <Text style={styles.retryText}>Event statuses unavailable. Retry</Text>
+        </Pressable>
+      ) : null}
       <View style={styles.searchBox}>
         <Ionicons name="search" size={19} color={colors.muted} />
         <TextInput
@@ -199,10 +206,10 @@ export default function EventsScreen() {
   return (
     <Screen edges={["top", "left", "right"]} style={styles.container}>
       <SectionList
-        sections={sections}
+        sections={eventLoadError ? [] : sections}
         keyExtractor={(event) => event.id}
         renderItem={({ item }) => (
-          <EventListItem event={item} status={statuses[item.id]} onStatusChange={(nextStatus) => updateEventStatus(item.id, nextStatus)} />
+          <EventListItem event={item} status={statusLoadError ? undefined : statuses[item.id]} onStatusChange={statusLoadError ? undefined : (nextStatus) => updateEventStatus(item.id, nextStatus)} />
         )}
         renderSectionHeader={({ section }) => <SectionHeading section={section} />}
         ItemSeparatorComponent={ItemSeparator}
@@ -236,7 +243,7 @@ function FilterRail({ label, options, selectedValues, onSelect, multiSelect = fa
         {options.map((option) => {
           const selected = selectedValues.includes(option.value);
           return (
-            <Pressable key={option.value} onPress={() => onSelect(option.value)} style={({ pressed }) => [styles.filterOption, selected && styles.filterOptionSelected, pressed && styles.filterPressed]} accessibilityRole={multiSelect ? "checkbox" : "radio"} accessibilityState={{ selected }} accessibilityLabel={`${label.toLowerCase()}: ${option.label}`}>
+            <Pressable key={option.value} onPress={() => onSelect(option.value)} style={({ pressed }) => [styles.filterOption, selected && styles.filterOptionSelected, pressed && styles.filterPressed]} accessibilityRole={multiSelect ? "checkbox" : "radio"} accessibilityState={{ checked: selected }} aria-checked={selected} accessibilityLabel={`${label.toLowerCase()}: ${option.label}`}>
               <Text style={[styles.filterOptionText, selected && styles.filterOptionTextSelected]}>{option.label}</Text>
             </Pressable>
           );

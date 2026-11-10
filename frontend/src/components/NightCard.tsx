@@ -24,12 +24,7 @@ export function NightCard({ night, layout = "timeline", showConnector = true }: 
   const isTimeline = layout === "timeline";
 
   return (
-    <Pressable
-      onPress={() => router.push({ pathname: "/night/[id]", params: { id: night.id } })}
-      style={({ pressed }) => [isTimeline ? styles.timelineRow : styles.compactRow, pressed && styles.pressed]}
-      accessibilityRole="button"
-      accessibilityLabel={`Open ${night.eventName}`}
-    >
+    <View style={isTimeline ? styles.timelineRow : styles.compactRow}>
       {isTimeline ? (
         <View style={styles.timelineRail}>
           <View style={styles.timelineMarker} />
@@ -37,6 +32,12 @@ export function NightCard({ night, layout = "timeline", showConnector = true }: 
         </View>
       ) : null}
       <View style={styles.cardSurface}>
+        <Pressable
+          onPress={() => router.push({ pathname: "/night/[id]", params: { id: night.id } })}
+          style={({ pressed }) => pressed && styles.pressed}
+          accessibilityRole="button"
+          accessibilityLabel={`Open ${night.eventName}`}
+        >
         <View style={styles.topRow}>
           <Text style={styles.date}>{formatDate(night.date)}</Text>
           <View style={styles.topActions}>
@@ -46,17 +47,6 @@ export function NightCard({ night, layout = "timeline", showConnector = true }: 
                 <Text style={styles.ratingText}>{night.rating}/5</Text>
               </View>
             ) : null}
-            <Pressable
-              onPress={(event) => {
-                event.stopPropagation();
-                router.push({ pathname: "/night/[id]/edit", params: { id: night.id } });
-              }}
-              style={({ pressed }) => [styles.editButton, pressed && styles.editPressed]}
-              accessibilityRole="button"
-              accessibilityLabel={`Edit ${night.eventName}`}
-            >
-              <Ionicons name="create-outline" size={18} color={colors.secondary} />
-            </Pressable>
           </View>
         </View>
         <Text style={styles.name} numberOfLines={2}>{night.eventName}</Text>
@@ -77,8 +67,17 @@ export function NightCard({ night, layout = "timeline", showConnector = true }: 
           </View>
           <Text style={styles.cost}>{formatCurrency(night.cost, night.currency)}</Text>
         </View>
+        </Pressable>
+        <Pressable
+          onPress={() => router.push({ pathname: "/night/[id]/edit", params: { id: night.id } })}
+          style={({ pressed }) => [styles.editButton, pressed && styles.editPressed]}
+          accessibilityRole="button"
+          accessibilityLabel={`Edit ${night.eventName}`}
+        >
+          <Ionicons name="create-outline" size={18} color={colors.secondary} />
+        </Pressable>
       </View>
-    </Pressable>
+    </View>
   );
 }
 
@@ -133,6 +132,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: spacing.sm,
+    minHeight: 44,
+    paddingRight: 52,
   },
   topActions: {
     flexDirection: "row",
@@ -140,6 +141,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   editButton: {
+    position: "absolute",
+    top: spacing.lg,
+    right: spacing.lg,
     width: 44,
     height: 44,
     alignItems: "center",

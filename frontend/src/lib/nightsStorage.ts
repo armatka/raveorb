@@ -87,12 +87,13 @@ async function readAll(): Promise<Night[]> {
   try {
     parsed = JSON.parse(stored);
   } catch {
-    return [];
+    throw new Error("Journal data could not be read.");
   }
-  if (!Array.isArray(parsed)) return [];
-  const validNights = parsed.filter(isNight);
-  const nights = validNights.map(normalizeNight);
-  if (validNights.some((night) => night.currency === undefined)) {
+  if (!Array.isArray(parsed) || !parsed.every(isNight)) {
+    throw new Error("Journal data contains unsupported records.");
+  }
+  const nights = parsed.map(normalizeNight);
+  if (parsed.some((night) => night.currency === undefined)) {
     await writeAll(nights);
   }
   return sortNewestFirst(nights);

@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { router } from "expo-router";
-import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { EventEntry } from "../types/event";
 import type { EventStatus } from "../lib/eventStatusStorage";
@@ -31,18 +31,18 @@ const statusCycle: Array<EventStatus | null> = [null, "interested", "going", "at
 
 export function EventListItem({ event, status, onStatusChange }: EventListItemProps) {
   const nextStatus = statusCycle[(statusCycle.indexOf(status ?? null) + 1) % statusCycle.length];
-  const handleStatusPress = (pressEvent: GestureResponderEvent) => {
-    pressEvent.stopPropagation();
+  const handleStatusPress = () => {
     if (onStatusChange) void onStatusChange(nextStatus);
   };
 
   return (
-    <Pressable
-      onPress={() => router.push({ pathname: "/event/[id]", params: { id: event.id } })}
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-      accessibilityRole="button"
-      accessibilityLabel={`Open ${event.title}`}
-    >
+    <View style={styles.card}>
+      <Pressable
+        onPress={() => router.push({ pathname: "/event/[id]", params: { id: event.id } })}
+        style={({ pressed }) => pressed && styles.cardPressed}
+        accessibilityRole="button"
+        accessibilityLabel={`Open ${event.title}`}
+      >
       {event.imageUrl ? (
         <Image source={{ uri: event.imageUrl }} contentFit="cover" style={styles.image} accessibilityLabel={`${event.title} event image`} />
       ) : (
@@ -60,6 +60,8 @@ export function EventListItem({ event, status, onStatusChange }: EventListItemPr
         <Text style={styles.meta} numberOfLines={1}>{event.city}, {event.countryCode} · {formatEventSchedule(event)}</Text>
         <Text style={styles.genres} numberOfLines={1}>{event.genres.slice(0, 3).join(" · ")}</Text>
         <Text style={styles.artists} numberOfLines={1}>{event.artists.slice(0, 3).join(" · ")}</Text>
+      </View>
+      </Pressable>
         <View style={styles.footer}>
           <Text style={styles.price}>{formatEventPrice(event)}</Text>
           {status ? (
@@ -75,7 +77,6 @@ export function EventListItem({ event, status, onStatusChange }: EventListItemPr
               accessibilityRole="button"
               accessibilityLabel={nextStatus ? `Mark ${event.title} ${nextStatus}` : `Clear status for ${event.title}`}
               accessibilityHint="Cycles this event's status without opening event details"
-              hitSlop={0}
             >
               <Ionicons
                 name={nextStatus ? statusIcons[nextStatus] : "close-circle-outline"}
@@ -85,8 +86,7 @@ export function EventListItem({ event, status, onStatusChange }: EventListItemPr
             </Pressable>
           ) : null}
         </View>
-      </View>
-    </Pressable>
+    </View>
   );
 }
 
@@ -154,7 +154,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    marginTop: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
   },
   artists: {
     color: colors.textSecondary,

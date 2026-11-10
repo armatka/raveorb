@@ -45,7 +45,7 @@ export default function VenuesScreen() {
           title="Venues unavailable"
           message={error}
           icon="cloud-offline-outline"
-          action={<Pressable onPress={() => setRetryToken((token) => token + 1)} style={styles.retryButton}><Text style={styles.retryText}>Retry</Text></Pressable>}
+          action={<Pressable onPress={() => setRetryToken((token) => token + 1)} style={styles.retryButton} accessibilityRole="button" accessibilityLabel="Retry loading venues"><Text style={styles.retryText}>Retry</Text></Pressable>}
         />
       ) : null}
       {!loading && !error && venues.length === 0 ? (

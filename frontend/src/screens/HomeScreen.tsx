@@ -204,6 +204,8 @@ export default function HomeScreen() {
           <View style={styles.listWrap}>
             {loading ? (
               <ActivityIndicator color={colors.primary} style={styles.inlineLoader} />
+            ) : loadError ? (
+              <Text style={styles.inlineMessage}>Your recent nights are temporarily unavailable.</Text>
             ) : recentNights.length > 0 ? recentNights.map((night) => (
               <Pressable key={night.id} onPress={() => router.push({ pathname: "/night/[id]", params: { id: night.id } })} style={({ pressed }) => [styles.eventCard, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`Open ${night.eventName}`}>
                 {night.photos[0] ? (

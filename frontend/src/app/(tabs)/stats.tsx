@@ -19,6 +19,7 @@ export default function StatsScreen() {
   const [selectedYear, setSelectedYear] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
   const [now, setNow] = useState(() => new Date());
 
   useFocusEffect(
@@ -45,7 +46,7 @@ export default function StatsScreen() {
           if (isCurrent) setLoading(false);
         });
       return () => { isCurrent = false; };
-    }, []),
+    }, [retryToken]),
   );
 
   const years = useMemo(
@@ -78,7 +79,7 @@ export default function StatsScreen() {
         {loading ? (
           <ActivityIndicator color={colors.primary} style={styles.loader} />
         ) : error ? (
-          <EmptyState title="Stats unavailable" message="Your journal statistics could not be loaded. Please try again." icon="alert-circle-outline" />
+          <EmptyState title="Stats unavailable" message="Your journal statistics could not be loaded. Please try again." icon="alert-circle-outline" action={<Pressable onPress={() => setRetryToken((token) => token + 1)} style={styles.addNightButton} accessibilityRole="button" accessibilityLabel="Retry loading stats"><Text style={styles.addNightText}>Retry</Text></Pressable>} />
         ) : nights.length === 0 ? (
           <EmptyState
             title="Your stats start with a night"
@@ -173,7 +174,8 @@ function YearButton({ label, selected, onPress }: { label: string; selected: boo
       onPress={onPress}
       style={({ pressed }) => [styles.yearButton, selected && styles.yearButtonSelected, pressed && styles.pressed]}
       accessibilityRole="radio"
-      accessibilityState={{ selected }}
+      accessibilityState={{ checked: selected }}
+      aria-checked={selected}
       accessibilityLabel={`Show ${label} statistics`}
     >
       <Text style={[styles.yearText, selected && styles.yearTextSelected]}>{label}</Text>

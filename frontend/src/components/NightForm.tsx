@@ -1,9 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
-import { router } from "expo-router";
 import { useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { RatingSelector } from "./RatingSelector";
 import { Screen } from "./Screen";
@@ -14,6 +13,8 @@ import { spacing } from "../theme/spacing";
 import { theme } from "../theme/theme";
 import { persistNightPhotos } from "../lib/nightsStorage";
 import { getCurrencySymbol } from "../lib/formatCurrency";
+import { goBackOrReplace } from "../lib/navigation";
+import { showAlert } from "../lib/showAlert";
 
 type NightFormProps = {
   heading: string;
@@ -99,7 +100,7 @@ export function NightForm({
     try {
       const remaining = 12 - values.photos.length;
       if (remaining <= 0) {
-        Alert.alert("Photo limit reached", "A night can include up to 12 photos.");
+        showAlert("Photo limit reached", "A night can include up to 12 photos.");
         return;
       }
 
@@ -114,7 +115,7 @@ export function NightForm({
         update("photos", [...new Set([...values.photos, ...selected])].slice(0, 12));
       }
     } catch {
-      Alert.alert("Could not open photos", "Please try selecting your photos again.");
+      showAlert("Could not open photos", "Please try selecting your photos again.");
     }
   };
 
@@ -131,11 +132,11 @@ export function NightForm({
       || parsedDate.getFullYear() !== dateParts[0]
       || parsedDate.getMonth() !== dateParts[1] - 1
       || parsedDate.getDate() !== dateParts[2]) {
-      Alert.alert("Complete the required fields", "Add an event, venue, city, and date in YYYY-MM-DD format.");
+      showAlert("Complete the required fields", "Add an event, venue, city, and date in YYYY-MM-DD format.");
       return;
     }
     if (!Number.isFinite(cost) || cost < 0) {
-      Alert.alert("Check the cost", "Cost must be a positive number or zero.");
+      showAlert("Check the cost", "Cost must be a positive number or zero.");
       return;
     }
 
@@ -160,7 +161,7 @@ export function NightForm({
       input.photos = await persistNightPhotos(input.photos);
       await onSave(input);
     } catch {
-      Alert.alert("Could not save night", "Your changes were not saved. Please try again.");
+      showAlert("Could not save night", "Your changes were not saved. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -168,7 +169,7 @@ export function NightForm({
 
   return (
     <Screen edges={["left", "right", "bottom"]} scrollable contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <ScreenHeader title={heading} onBack={() => router.back()} />
+      <ScreenHeader title={heading} onBack={() => goBackOrReplace("/(tabs)/nights")} />
 
       <Text style={styles.sectionLabel}>THE NIGHT</Text>
       <Field label="Event name *" value={values.eventName} onChangeText={(text) => update("eventName", text)} placeholder="e.g. Afterglow" />
@@ -195,7 +196,8 @@ export function NightForm({
                 onPress={() => update("currency", option.code)}
                 style={[styles.currencyOption, selected && styles.currencyOptionSelected]}
                 accessibilityRole="radio"
-                accessibilityState={{ selected }}
+                accessibilityState={{ checked: selected }}
+                aria-checked={selected}
                 accessibilityLabel={`${option.code}, ${option.name}`}
               >
                 <Text style={[styles.currencyCode, selected && styles.currencyCodeSelected]}>{option.code}</Text>
@@ -271,6 +273,7 @@ function Field({ label, value, onChangeText, placeholder, keyboardType = "defaul
         <TextInput
           value={value}
           onChangeText={onChangeText}
+          accessibilityLabel={label.replace(" *", " (required)")}
           placeholder={placeholder}
           placeholderTextColor={theme.controls.input.placeholderColor}
           keyboardType={keyboardType}
@@ -402,7 +405,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   photoButton: {
-    minHeight: 36,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
@@ -436,11 +439,11 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 4,
     right: 4,
-    width: 24,
-    height: 24,
+    width: 44,
+    height: 44,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 12,
+    borderRadius: 22,
     backgroundColor: "rgba(5, 5, 5, 0.82)",
   },
   submitButton: {

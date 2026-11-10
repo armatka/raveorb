@@ -3,7 +3,6 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -13,9 +12,12 @@ import {
 import EventDetailHeader from "../components/EventDetailHeader";
 import { EmptyState } from "../components/EmptyState";
 import { Screen } from "../components/Screen";
+import { ScreenHeader } from "../components/ScreenHeader";
 import { eventStatusStorage, type EventStatus } from "../lib/eventStatusStorage";
 import { formatEventDate, formatEventPrice, formatEventSchedule } from "../lib/eventFormatting";
 import { nightsStorage } from "../lib/nightsStorage";
+import { goBackOrReplace } from "../lib/navigation";
+import { showAlert } from "../lib/showAlert";
 import { eventsRepository } from "../services/eventsRepository";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
@@ -40,6 +42,8 @@ export default function EventDetailScreen() {
   const [loadingNight, setLoadingNight] = useState(true);
   const [loadingEvent, setLoadingEvent] = useState(true);
   const [eventError, setEventError] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState(false);
+  const [nightError, setNightError] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
 
   useFocusEffect(
@@ -54,6 +58,8 @@ export default function EventDetailScreen() {
         setLinkedNightId(null);
         setLoadingStatus(false);
         setLoadingNight(false);
+        setStatusError(false);
+        setNightError(false);
         return () => {
           isCurrent = false;
         };
@@ -80,6 +86,8 @@ export default function EventDetailScreen() {
         }
         setStatus(statusResult.status === "fulfilled" ? statusResult.value : null);
         setLinkedNightId(linkedNightResult.status === "fulfilled" ? linkedNightResult.value?.id ?? null : null);
+        setStatusError(statusResult.status === "rejected");
+        setNightError(linkedNightResult.status === "rejected");
       }).finally(() => {
         if (isCurrent) {
           setLoadingEvent(false);
@@ -98,7 +106,8 @@ export default function EventDetailScreen() {
 
   if (loadingEvent) {
     return (
-      <Screen>
+      <Screen edges={["left", "right", "bottom"]}>
+        <ScreenHeader onBack={() => goBackOrReplace("/(tabs)/events")} />
         <ActivityIndicator color={colors.primary} style={styles.statusLoader} />
       </Screen>
     );
@@ -106,7 +115,8 @@ export default function EventDetailScreen() {
 
   if (eventError) {
     return (
-      <Screen>
+      <Screen edges={["left", "right", "bottom"]}>
+        <ScreenHeader onBack={() => goBackOrReplace("/(tabs)/events")} />
         <EmptyState
           title="Discovery unavailable"
           message={eventError}
@@ -123,12 +133,13 @@ export default function EventDetailScreen() {
 
   if (!event) {
     return (
-      <Screen>
+      <Screen edges={["left", "right", "bottom"]}>
+        <ScreenHeader onBack={() => goBackOrReplace("/(tabs)/events")} />
         <View style={styles.notFound}>
           <Ionicons name="alert-circle-outline" size={42} color={colors.error} />
           <Text style={styles.notFoundTitle}>Event not found</Text>
           <Text style={styles.notFoundText}>This event may no longer be available.</Text>
-          <Pressable style={styles.secondaryButton} onPress={() => router.back()} accessibilityRole="button">
+          <Pressable style={styles.secondaryButton} onPress={() => goBackOrReplace("/(tabs)/events")} accessibilityRole="button">
             <Text style={styles.secondaryButtonText}>Go back</Text>
           </Pressable>
         </View>
@@ -168,12 +179,13 @@ export default function EventDetailScreen() {
       await eventStatusStorage.set(event.id, updatedStatus);
       setStatus(updatedStatus);
     } catch {
-      Alert.alert("Could not update event", "Your selection was not saved. Please try again.");
+      showAlert("Could not update event", "Your selection was not saved. Please try again.");
     }
   };
 
   return (
-    <Screen scrollable contentContainerStyle={styles.content}>
+    <Screen edges={["left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
+      <ScreenHeader onBack={() => goBackOrReplace("/(tabs)/events")} />
       <EventDetailHeader title={event.title} date={formattedDate} location={location} type={event.type} />
 
       <View style={styles.statusPanel}>
@@ -181,6 +193,10 @@ export default function EventDetailScreen() {
         <Text style={styles.statusDescription}>Save this event to your RaveOrb journey.</Text>
         {loadingStatus ? (
           <ActivityIndicator color={colors.primary} style={styles.statusLoader} />
+        ) : statusError ? (
+          <Pressable onPress={retryLoading} style={styles.secondaryButton} accessibilityRole="button" accessibilityLabel="Retry loading event status">
+            <Text style={styles.secondaryButtonText}>Event status unavailable. Retry</Text>
+          </Pressable>
         ) : (
           <View style={styles.statusRow}>
             {statusOptions.map((option) => {
@@ -190,8 +206,9 @@ export default function EventDetailScreen() {
                   key={option.value}
                   onPress={() => selectStatus(option.value)}
                   style={({ pressed }) => [styles.statusButton, selected && styles.statusButtonSelected, pressed && styles.statusButtonPressed]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: selected }}
+                  aria-checked={selected}
                   accessibilityLabel={selected ? `Remove ${option.label} status` : `Mark event ${option.label}`}
                 >
                   <Ionicons name={option.icon} size={20} color={selected ? colors.background : colors.secondary} />
@@ -204,6 +221,10 @@ export default function EventDetailScreen() {
         {status === "attended" ? (
           loadingNight ? (
             <ActivityIndicator color={colors.primary} style={styles.statusLoader} />
+          ) : nightError ? (
+            <Pressable onPress={retryLoading} style={styles.secondaryButton} accessibilityRole="button" accessibilityLabel="Retry loading linked night">
+              <Text style={styles.secondaryButtonText}>Journal unavailable. Retry</Text>
+            </Pressable>
           ) : (
             <Pressable
               style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}

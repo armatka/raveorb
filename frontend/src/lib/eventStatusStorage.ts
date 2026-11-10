@@ -18,19 +18,17 @@ async function readAll(): Promise<EventStatusMap> {
     return {};
   }
 
+  let parsed: unknown;
   try {
-    const parsed: unknown = JSON.parse(stored);
-
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {};
-    }
-
-    return Object.fromEntries(
-      Object.entries(parsed).filter((entry): entry is [string, EventStatus] => isEventStatus(entry[1])),
-    );
+    parsed = JSON.parse(stored);
   } catch {
-    return {};
+    throw new Error("Event statuses could not be read.");
   }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
+    || !Object.values(parsed).every(isEventStatus)) {
+    throw new Error("Event statuses contain unsupported records.");
+  }
+  return parsed as EventStatusMap;
 }
 
 function updateAll(update: (statuses: EventStatusMap) => EventStatusMap): Promise<void> {

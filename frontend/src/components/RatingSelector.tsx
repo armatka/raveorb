@@ -22,9 +22,9 @@ export function RatingSelector({ value, onChange, label = "Your rating" }: Ratin
               key={rating}
               onPress={() => onChange(rating === value ? 0 : rating)}
               accessibilityRole="radio"
-              accessibilityState={{ selected: rating === value }}
+              accessibilityState={{ checked: rating === value }}
+              aria-checked={rating === value}
               accessibilityLabel={`${rating} out of 5`}
-              hitSlop={6}
               style={styles.starButton}
             >
               <Ionicons name={selected ? "star" : "star-outline"} size={28} color={selected ? colors.primary : colors.titanium} />
@@ -52,7 +52,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   starButton: {
-    paddingRight: spacing.sm,
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
   },
   value: {
     color: colors.muted,

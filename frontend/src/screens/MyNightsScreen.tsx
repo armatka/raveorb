@@ -33,6 +33,7 @@ export default function MyNightsScreen() {
   const [nights, setNights] = useState<Night[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
   const [query, setQuery] = useState("");
   const [year, setYear] = useState<string | null>(null);
   const [city, setCity] = useState<string | null>(null);
@@ -59,7 +60,7 @@ export default function MyNightsScreen() {
           if (isCurrent) setLoading(false);
         });
       return () => { isCurrent = false; };
-    }, []),
+    }, [retryToken]),
   );
 
   const options = useMemo(() => getNightFilterOptions(nights), [nights]);
@@ -126,6 +127,7 @@ export default function MyNightsScreen() {
           style={({ pressed }) => [styles.filterToggle, pressed && styles.filterPressed]}
           accessibilityRole="button"
           accessibilityState={{ expanded: filtersExpanded }}
+          aria-expanded={filtersExpanded}
           accessibilityLabel={filtersExpanded ? "Hide filters" : `Show filters${activeFilterCount ? `, ${activeFilterCount} active` : ""}`}
         >
           <Ionicons name="options-outline" size={17} color={colors.secondary} />
@@ -189,7 +191,7 @@ export default function MyNightsScreen() {
   if (loading) {
     emptyContent = <ActivityIndicator color={colors.primary} style={styles.loader} />;
   } else if (error) {
-    emptyContent = <EmptyState title="Journal unavailable" message="Your nights could not be loaded. Check your device storage and try again." icon="alert-circle-outline" />;
+    emptyContent = <EmptyState title="Journal unavailable" message="Your nights could not be loaded. Check your device storage and try again." icon="alert-circle-outline" action={<Pressable onPress={() => setRetryToken((token) => token + 1)} style={styles.emptyButton} accessibilityRole="button" accessibilityLabel="Retry loading journal"><Text style={styles.emptyButtonText}>Retry</Text></Pressable>} />;
   } else if (nights.length === 0) {
     emptyContent = (
       <EmptyState
@@ -210,7 +212,7 @@ export default function MyNightsScreen() {
   return (
     <Screen edges={["top", "left", "right"]} style={styles.container}>
       <SectionList
-        sections={sections}
+        sections={error ? [] : sections}
         keyExtractor={(night) => night.id}
         renderItem={({ item, index, section }) => (
           <NightCard
@@ -259,7 +261,8 @@ function FilterRail({
                 onPress={() => onSelect(value)}
                 style={({ pressed }) => [styles.filterOption, isSelected && styles.filterOptionSelected, pressed && styles.filterPressed]}
                 accessibilityRole="radio"
-                accessibilityState={{ selected: isSelected }}
+                accessibilityState={{ checked: isSelected }}
+                aria-checked={isSelected}
                 accessibilityLabel={`${label.toLowerCase()}: ${option}`}
               >
                 <Text style={[styles.filterText, isSelected && styles.filterTextSelected]} numberOfLines={1}>{option}</Text>
@@ -288,7 +291,8 @@ function ModeButton({
       onPress={onPress}
       style={[styles.modeButton, selected && styles.modeButtonSelected]}
       accessibilityRole="radio"
-      accessibilityState={{ selected }}
+      accessibilityState={{ checked: selected }}
+      aria-checked={selected}
       accessibilityLabel={`${label} view`}
     >
       <Ionicons name={icon} size={15} color={selected ? colors.background : colors.textSecondary} />
@@ -479,7 +483,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   modeButton: {
-    minHeight: 40,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
