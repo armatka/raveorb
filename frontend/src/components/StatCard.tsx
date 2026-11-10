@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
@@ -7,11 +7,12 @@ type StatCardProps = {
   title: string;
   value: string;
   subtitle: string;
+  style?: StyleProp<ViewStyle>;
 };
 
-export function StatCard({ title, value, subtitle }: StatCardProps) {
+export function StatCard({ title, value, subtitle, style }: StatCardProps) {
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, style]}>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.value}>{value}</Text>
       <Text style={styles.subtitle}>{subtitle}</Text>
