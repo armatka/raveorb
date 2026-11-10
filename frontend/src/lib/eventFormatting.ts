@@ -24,16 +24,18 @@ export function formatEventSchedule(event: Pick<EventEntry, "date" | "startTime"
 
 export function formatEventPrice(event: Pick<EventEntry, "priceMin" | "priceMax" | "currency">): string {
   const { priceMin, priceMax, currency } = event;
-  if (priceMin === undefined && priceMax === undefined) return "Price unavailable";
+  if (priceMin === undefined && priceMax === undefined) return "TBA";
   if (!currency) return "Currency unavailable";
+  if (priceMin === 0 && (priceMax === 0 || priceMax === undefined)) return "Free";
 
-  if (priceMin === undefined) {
-    if (priceMax === undefined) return "Price unavailable";
+  if (priceMin === undefined && priceMax !== undefined) {
     return `Up to ${formatCurrency(priceMax, currency)}`;
   }
-  if (priceMax === undefined) {
+  if (priceMin !== undefined && priceMax === undefined) {
     return `From ${formatCurrency(priceMin, currency)}`;
   }
+  if (priceMin === undefined || priceMax === undefined) return "TBA";
+  if (priceMin === 0) return `Free–${formatCurrency(priceMax, currency)}`;
   if (priceMin === priceMax) return formatCurrency(priceMin, currency);
 
   return `${formatCurrency(priceMin, currency)}–${formatCurrency(priceMax, currency)}`;

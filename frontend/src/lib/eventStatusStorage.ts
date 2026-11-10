@@ -14,13 +14,17 @@ async function readAll(): Promise<EventStatusMap> {
   }
 
   try {
-    const parsed = JSON.parse(stored);
+    const parsed: unknown = JSON.parse(stored);
 
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return {};
     }
 
-    return parsed as EventStatusMap;
+    return Object.fromEntries(
+      Object.entries(parsed).filter((entry): entry is [string, EventStatus] =>
+        entry[1] === "interested" || entry[1] === "going" || entry[1] === "attended",
+      ),
+    );
   } catch {
     return {};
   }
@@ -31,6 +35,10 @@ async function writeAll(statuses: EventStatusMap): Promise<void> {
 }
 
 export const eventStatusStorage = {
+  async list(): Promise<EventStatusMap> {
+    return readAll();
+  },
+
   async get(eventId: string): Promise<EventStatus | null> {
     const statuses = await readAll();
     return statuses[eventId] ?? null;
