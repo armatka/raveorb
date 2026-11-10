@@ -9,22 +9,26 @@ import Logo from "../components/Logo";
 import MetricCard from "../components/MetricCard";
 import RecommendationCard from "../components/RecommendationCard";
 import { Screen } from "../components/Screen";
-import { mockEvents } from "../data/mockData";
 import { formatEventSchedule } from "../lib/eventFormatting";
 import { eventStatusStorage, type EventStatus } from "../lib/eventStatusStorage";
 import { getHomeRecommendations } from "../lib/homeRecommendations";
 import { calculateNightStats } from "../lib/nightStats";
 import { nightsStorage } from "../lib/nightsStorage";
+import { eventsRepository } from "../services/eventsRepository";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
 import type { Night } from "../types/Night";
+import type { EventEntry } from "../types/event";
 
 export default function HomeScreen() {
   const [nights, setNights] = useState<Night[]>([]);
   const [statuses, setStatuses] = useState<Record<string, EventStatus>>({});
+  const [events, setEvents] = useState<EventEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [eventLoadError, setEventLoadError] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
+  const [retryToken, setRetryToken] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -32,37 +36,45 @@ export default function HomeScreen() {
       setLoading(true);
       setLoadError(false);
       setNow(new Date());
-      Promise.all([nightsStorage.list(), eventStatusStorage.list()])
-        .then(([savedNights, savedStatuses]) => {
+      Promise.allSettled([nightsStorage.list(), eventStatusStorage.list(), eventsRepository.listEvents()])
+        .then(([nightResult, statusResult, eventResult]) => {
           if (!isCurrent) return;
-          setNights(savedNights);
-          setStatuses(savedStatuses);
-        })
-        .catch(() => {
-          if (isCurrent) setLoadError(true);
+          if (nightResult.status === "fulfilled") {
+            setNights(nightResult.value);
+            setLoadError(false);
+          } else {
+            setLoadError(true);
+          }
+          if (statusResult.status === "fulfilled") setStatuses(statusResult.value);
+          if (eventResult.status === "fulfilled") {
+            setEvents(eventResult.value);
+            setEventLoadError(null);
+          } else {
+            setEventLoadError(eventResult.reason instanceof Error ? eventResult.reason.message : "Could not load events.");
+          }
         })
         .finally(() => {
           if (isCurrent) setLoading(false);
         });
       return () => { isCurrent = false; };
-    }, []),
+    }, [retryToken]),
   );
 
   const currentYear = String(now.getFullYear());
   const allTimePulse = useMemo(() => calculateNightStats(nights, null, now), [nights, now]);
   const yearPulse = useMemo(() => calculateNightStats(nights, currentYear, now), [currentYear, nights, now]);
-  const recommendations = useMemo(() => getHomeRecommendations(nights, mockEvents, statuses, now), [nights, now, statuses]);
+  const recommendations = useMemo(() => getHomeRecommendations(nights, events, statuses, now), [events, nights, now, statuses]);
   const hasJournalBasedRecommendations = recommendations.some((item) => item.reason !== "Upcoming event in Discovery");
   const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const nextEvent = useMemo(() => {
-    const futureEvents = mockEvents
+    const futureEvents = events
       .filter((event) => event.date >= todayKey)
       .sort((first, second) => first.date.localeCompare(second.date) || first.startTime.localeCompare(second.startTime));
     const goingEvent = futureEvents.find((event) => statuses[event.id] === "going");
     if (goingEvent) return { event: goingEvent, status: "going" as const };
     const interestedEvent = futureEvents.find((event) => statuses[event.id] === "interested");
     return interestedEvent ? { event: interestedEvent, status: "interested" as const } : null;
-  }, [now, statuses, todayKey]);
+  }, [events, now, statuses, todayKey]);
   const recentNights = useMemo(
     () => [...nights].sort((first, second) => second.date.localeCompare(first.date)).slice(0, 3),
     [nights],
@@ -120,7 +132,15 @@ export default function HomeScreen() {
 
           <View style={styles.discoveryCard}>
             <Text style={styles.discoveryTitle}>Next up</Text>
-            {nextEvent ? (
+            {eventLoadError ? (
+              <View style={styles.nextEvent}>
+                <Text style={styles.discoveryCopy}>{eventLoadError}</Text>
+                <Pressable onPress={() => setRetryToken((token) => token + 1)} style={styles.discoveryButton} accessibilityRole="button">
+                  <Text style={styles.discoveryButtonText}>Retry</Text>
+                  <Ionicons name="refresh" size={17} color={colors.background} />
+                </Pressable>
+              </View>
+            ) : nextEvent ? (
               <Pressable onPress={() => router.push({ pathname: "/event/[id]", params: { id: nextEvent.event.id } })} style={({ pressed }) => [styles.nextEvent, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`Open ${nextEvent.event.title}, marked ${nextEvent.status}`}>
                 <View style={styles.eventMetaRow}>
                   <Text style={styles.discoveryHeadline} numberOfLines={2}>{nextEvent.event.title}</Text>
@@ -151,7 +171,9 @@ export default function HomeScreen() {
               : "Upcoming events from Discovery. Log attended genres or highly rated places to shape future picks."}
           </Text>
 
-          {recommendations.length > 0 ? (
+          {eventLoadError ? (
+            <Text style={styles.inlineMessage}>Recommendations are unavailable while Discovery cannot be reached.</Text>
+          ) : recommendations.length > 0 ? (
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}

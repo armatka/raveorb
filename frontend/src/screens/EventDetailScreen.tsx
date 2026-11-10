@@ -11,13 +11,15 @@ import {
 } from "react-native";
 
 import EventDetailHeader from "../components/EventDetailHeader";
+import { EmptyState } from "../components/EmptyState";
 import { Screen } from "../components/Screen";
-import { mockEvents, mockVenues } from "../data/mockData";
 import { eventStatusStorage, type EventStatus } from "../lib/eventStatusStorage";
 import { formatEventDate, formatEventPrice, formatEventSchedule } from "../lib/eventFormatting";
 import { nightsStorage } from "../lib/nightsStorage";
+import { eventsRepository } from "../services/eventsRepository";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
+import type { EventEntry } from "../types/event";
 
 const statusOptions: Array<{
   value: EventStatus;
@@ -31,56 +33,93 @@ const statusOptions: Array<{
 
 export default function EventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const [event, setEvent] = useState<EventEntry | null>(null);
   const [status, setStatus] = useState<EventStatus | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [linkedNightId, setLinkedNightId] = useState<string | null>(null);
   const [loadingNight, setLoadingNight] = useState(true);
-
-  const event = mockEvents.find((item) => item.id === id);
-  const venue = event
-    ? mockVenues.find((item) => item.id === event.venueId)
-    : undefined;
+  const [loadingEvent, setLoadingEvent] = useState(true);
+  const [eventError, setEventError] = useState<string | null>(null);
+  const [retryToken, setRetryToken] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
       let isCurrent = true;
 
       if (!id) {
-        setLoadingStatus(false);
+        setEvent(null);
+        setEventError(null);
+        setLoadingEvent(false);
+        setStatus(null);
         setLinkedNightId(null);
+        setLoadingStatus(false);
         setLoadingNight(false);
         return () => {
           isCurrent = false;
         };
       }
 
+      setLoadingEvent(true);
+      setEventError(null);
       setLoadingStatus(true);
       setLoadingNight(true);
-      Promise.all([eventStatusStorage.get(id), nightsStorage.getBySourceEventId(id)])
-        .then(([savedStatus, linkedNight]) => {
-          if (isCurrent) {
-            setStatus(savedStatus);
-            setLinkedNightId(linkedNight?.id ?? null);
-          }
-        })
-        .catch(() => {
-          if (isCurrent) {
-            setStatus(null);
-            setLinkedNightId(null);
-          }
-        })
-        .finally(() => {
-          if (isCurrent) {
-            setLoadingStatus(false);
-            setLoadingNight(false);
-          }
-        });
+
+      Promise.allSettled([
+        eventsRepository.getEvent(id),
+        eventStatusStorage.get(id),
+        nightsStorage.getBySourceEventId(id),
+      ]).then(([eventResult, statusResult, linkedNightResult]) => {
+        if (!isCurrent) return;
+
+        if (eventResult.status === "fulfilled") {
+          setEvent(eventResult.value);
+          setEventError(null);
+        } else {
+          setEvent(null);
+          setEventError(eventResult.reason instanceof Error ? eventResult.reason.message : "Could not load this event.");
+        }
+        setStatus(statusResult.status === "fulfilled" ? statusResult.value : null);
+        setLinkedNightId(linkedNightResult.status === "fulfilled" ? linkedNightResult.value?.id ?? null : null);
+      }).finally(() => {
+        if (isCurrent) {
+          setLoadingEvent(false);
+          setLoadingStatus(false);
+          setLoadingNight(false);
+        }
+      });
 
       return () => {
         isCurrent = false;
       };
-    }, [id]),
+    }, [id, retryToken]),
   );
+
+  const retryLoading = () => setRetryToken((token) => token + 1);
+
+  if (loadingEvent) {
+    return (
+      <Screen>
+        <ActivityIndicator color={colors.primary} style={styles.statusLoader} />
+      </Screen>
+    );
+  }
+
+  if (eventError) {
+    return (
+      <Screen>
+        <EmptyState
+          title="Discovery unavailable"
+          message={eventError}
+          icon="cloud-offline-outline"
+          action={(
+            <Pressable onPress={retryLoading} style={styles.secondaryButton} accessibilityRole="button" accessibilityLabel="Retry loading event">
+              <Text style={styles.secondaryButtonText}>Retry</Text>
+            </Pressable>
+          )}
+        />
+      </Screen>
+    );
+  }
 
   if (!event) {
     return (
@@ -89,7 +128,7 @@ export default function EventDetailScreen() {
           <Ionicons name="alert-circle-outline" size={42} color={colors.error} />
           <Text style={styles.notFoundTitle}>Event not found</Text>
           <Text style={styles.notFoundText}>This event may no longer be available.</Text>
-          <Pressable style={styles.secondaryButton} onPress={() => router.back()}>
+          <Pressable style={styles.secondaryButton} onPress={() => router.back()} accessibilityRole="button">
             <Text style={styles.secondaryButtonText}>Go back</Text>
           </Pressable>
         </View>
@@ -97,7 +136,7 @@ export default function EventDetailScreen() {
     );
   }
 
-  const venueName = event.venueName || venue?.name || "Venue to be announced";
+  const venueName = event.venueName || "Venue to be announced";
   const location = `${venueName} · ${event.city}, ${event.countryCode}`;
   const formattedDate = formatEventSchedule(event);
 
@@ -118,9 +157,9 @@ export default function EventDetailScreen() {
   const openLinkedNight = () => {
     if (linkedNightId) {
       router.push({ pathname: "/night/[id]", params: { id: linkedNightId } });
-      return;
+    } else {
+      openNightForm();
     }
-    openNightForm();
   };
 
   const selectStatus = async (nextStatus: EventStatus) => {
@@ -135,17 +174,11 @@ export default function EventDetailScreen() {
 
   return (
     <Screen scrollable contentContainerStyle={styles.content}>
-      <EventDetailHeader
-        title={event.title}
-        date={formattedDate}
-        location={location}
-        type={event.type}
-      />
+      <EventDetailHeader title={event.title} date={formattedDate} location={location} type={event.type} />
 
       <View style={styles.statusPanel}>
         <Text style={styles.sectionTitle}>Your plan</Text>
         <Text style={styles.statusDescription}>Save this event to your RaveOrb journey.</Text>
-
         {loadingStatus ? (
           <ActivityIndicator color={colors.primary} style={styles.statusLoader} />
         ) : (
@@ -161,25 +194,23 @@ export default function EventDetailScreen() {
                   accessibilityState={{ selected }}
                   accessibilityLabel={selected ? `Remove ${option.label} status` : `Mark event ${option.label}`}
                 >
-                  <Ionicons
-                    name={option.icon}
-                    size={20}
-                    color={selected ? colors.background : colors.secondary}
-                  />
-                  <Text style={[styles.statusButtonText, selected && styles.statusButtonTextSelected]}>
-                    {option.label}
-                  </Text>
+                  <Ionicons name={option.icon} size={20} color={selected ? colors.background : colors.secondary} />
+                  <Text style={[styles.statusButtonText, selected && styles.statusButtonTextSelected]}>{option.label}</Text>
                 </Pressable>
               );
             })}
           </View>
         )}
-
         {status === "attended" ? (
           loadingNight ? (
             <ActivityIndicator color={colors.primary} style={styles.statusLoader} />
           ) : (
-            <Pressable style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]} onPress={openLinkedNight} accessibilityRole="button" accessibilityLabel={linkedNightId ? "View in My Nights" : "Add to My Nights"}>
+            <Pressable
+              style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
+              onPress={openLinkedNight}
+              accessibilityRole="button"
+              accessibilityLabel={linkedNightId ? "View in My Nights" : "Add to My Nights"}
+            >
               <Ionicons name={linkedNightId ? "book" : "book-outline"} size={19} color={colors.background} />
               <Text style={styles.primaryButtonText}>{linkedNightId ? "View in My Nights" : "Add to My Nights"}</Text>
             </Pressable>
@@ -330,9 +361,10 @@ const styles = StyleSheet.create({
     opacity: 0.78,
   },
   secondaryButton: {
+    minHeight: 44,
+    justifyContent: "center",
     marginTop: spacing.lg,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
@@ -341,6 +373,7 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: colors.text,
     fontWeight: "700",
+    textAlign: "center",
   },
   summaryCard: {
     backgroundColor: colors.surface,
