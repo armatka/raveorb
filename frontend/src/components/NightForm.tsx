@@ -16,6 +16,7 @@ type NightFormProps = {
   heading: string;
   submitLabel: string;
   initialNight?: Night;
+  initialValues?: Partial<NightInput>;
   onSave: (input: NightInput) => Promise<void>;
 };
 
@@ -39,24 +40,48 @@ function splitList(value: string): string[] {
   return value.split(",").map((item) => item.trim()).filter(Boolean);
 }
 
-function getInitialValues(night?: Night): FormValues {
+function getInitialValues(
+  night?: Night,
+  initialValues?: Partial<NightInput>,
+): FormValues {
   return {
-    date: night?.date ?? today,
-    eventName: night?.eventName ?? "",
-    venueName: night?.venueName ?? "",
-    city: night?.city ?? "",
-    artistsSeen: night?.artistsSeen.join(", ") ?? "",
-    friends: night?.friends.join(", ") ?? "",
-    rating: night?.rating ?? 0,
-    cost: night ? String(night.cost) : "",
-    notes: night?.notes ?? "",
-    favoriteMoment: night?.favoriteMoment ?? "",
-    photos: night?.photos ?? [],
+    date: night?.date ?? initialValues?.date ?? today,
+    eventName: night?.eventName ?? initialValues?.eventName ?? "",
+    venueName: night?.venueName ?? initialValues?.venueName ?? "",
+    city: night?.city ?? initialValues?.city ?? "",
+    artistsSeen:
+      night?.artistsSeen.join(", ")
+      ?? initialValues?.artistsSeen?.join(", ")
+      ?? "",
+    friends:
+      night?.friends.join(", ")
+      ?? initialValues?.friends?.join(", ")
+      ?? "",
+    rating: night?.rating ?? initialValues?.rating ?? 0,
+    cost: night
+      ? String(night.cost)
+      : initialValues?.cost !== undefined
+        ? String(initialValues.cost)
+        : "",
+    notes: night?.notes ?? initialValues?.notes ?? "",
+    favoriteMoment:
+      night?.favoriteMoment
+      ?? initialValues?.favoriteMoment
+      ?? "",
+    photos: night?.photos ?? initialValues?.photos ?? [],
   };
 }
 
-export function NightForm({ heading, submitLabel, initialNight, onSave }: NightFormProps) {
-  const [values, setValues] = useState<FormValues>(() => getInitialValues(initialNight));
+export function NightForm({
+  heading,
+  submitLabel,
+  initialNight,
+  initialValues,
+  onSave,
+}: NightFormProps) {
+  const [values, setValues] = useState<FormValues>(
+    () => getInitialValues(initialNight, initialValues),
+  );
   const [saving, setSaving] = useState(false);
 
   const update = <K extends keyof FormValues>(key: K, value: FormValues[K]) => {

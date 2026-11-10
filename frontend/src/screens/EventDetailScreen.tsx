@@ -1,44 +1,250 @@
-import { SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import EventDetailHeader from "../components/EventDetailHeader";
+import { mockEvents, mockVenues } from "../data/mockData";
+import {
+  eventStatusStorage,
+  type EventStatus,
+} from "../lib/eventStatusStorage";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
 
-const event = {
-  title: "Sunset Ritual",
-  type: "festival",
-  date: "March 14 · 7:00 PM",
-  location: "Solar Shore · Miami, FL",
-  artists: ["KAYO", "Nova Bloom", "Astra Vale", "Mira Lane"],
-  stats: [
-    { label: "Vibe", value: "94/100" },
-    { label: "Spend", value: "$128" },
-    { label: "Duration", value: "9h" },
-  ],
-  notes: "A high-energy open-air set with strong visuals, immersive sound, and a crowd that stayed locked in from the first drop to the final sunrise moment.",
-  lineup: ["Main stage", "Sunset deck", "After hours room"],
-};
+const statusOptions: Array<{
+  value: EventStatus;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}> = [
+  {
+    value: "interested",
+    label: "Interested",
+    icon: "heart-outline",
+  },
+  {
+    value: "going",
+    label: "Going",
+    icon: "calendar-outline",
+  },
+  {
+    value: "attended",
+    label: "Attended",
+    icon: "checkmark-circle-outline",
+  },
+];
 
 export default function EventDetailScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const [status, setStatus] = useState<EventStatus | null>(null);
+  const [loadingStatus, setLoadingStatus] = useState(true);
+
+  const event = mockEvents.find((item) => item.id === id);
+  const venue = event
+    ? mockVenues.find((item) => item.id === event.venueId)
+    : undefined;
+
+  useFocusEffect(
+    useCallback(() => {
+      let isCurrent = true;
+
+      if (!id) {
+        setLoadingStatus(false);
+        return () => {
+          isCurrent = false;
+        };
+      }
+
+      setLoadingStatus(true);
+
+      eventStatusStorage
+        .get(id)
+        .then((savedStatus) => {
+          if (isCurrent) {
+            setStatus(savedStatus);
+          }
+        })
+        .catch(() => {
+          if (isCurrent) {
+            setStatus(null);
+          }
+        })
+        .finally(() => {
+          if (isCurrent) {
+            setLoadingStatus(false);
+          }
+        });
+
+      return () => {
+        isCurrent = false;
+      };
+    }, [id]),
+  );
+
+  if (!event) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.notFound}>
+          <Ionicons
+            name="alert-circle-outline"
+            size={42}
+            color={colors.error}
+          />
+          <Text style={styles.notFoundTitle}>Event not found</Text>
+          <Text style={styles.notFoundText}>
+            This event may no longer be available.
+          </Text>
+          <Pressable style={styles.secondaryButton} onPress={() => router.back()}>
+            <Text style={styles.secondaryButtonText}>Go back</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const venueName = venue?.name ?? "Venue to be announced";
+  const location = `${venueName} · ${event.city}`;
+  const formattedDate = `${event.date} · ${event.startTime}`;
+
+  const selectStatus = async (nextStatus: EventStatus) => {
+    try {
+      await eventStatusStorage.set(event.id, nextStatus);
+      setStatus(nextStatus);
+
+      if (nextStatus === "attended") {
+        Alert.alert(
+          "Add this experience to My Nights?",
+          "RaveOrb can prefill your journal entry with the event details.",
+          [
+            {
+              text: "Not now",
+              style: "cancel",
+            },
+            {
+              text: "Add to My Nights",
+              onPress: openNightForm,
+            },
+          ],
+        );
+      }
+    } catch {
+      Alert.alert(
+        "Could not update event",
+        "Your selection was not saved. Please try again.",
+      );
+    }
+  };
+
+  const openNightForm = () => {
+    router.push({
+      pathname: "/night/new",
+      params: {
+        eventName: event.title,
+        date: event.date,
+        venueName,
+        city: event.city,
+        artists: event.artists.join("|"),
+      },
+    });
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
         <EventDetailHeader
           title={event.title}
-          date={event.date}
-          location={event.location}
+          date={formattedDate}
+          location={location}
           type={event.type}
         />
+
+        <View style={styles.statusPanel}>
+          <Text style={styles.sectionTitle}>Your plan</Text>
+          <Text style={styles.statusDescription}>
+            Save this event to your RaveOrb journey.
+          </Text>
+
+          {loadingStatus ? (
+            <ActivityIndicator
+              color={colors.primary}
+              style={styles.statusLoader}
+            />
+          ) : (
+            <View style={styles.statusRow}>
+              {statusOptions.map((option) => {
+                const selected = status === option.value;
+
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() => selectStatus(option.value)}
+                    style={[
+                      styles.statusButton,
+                      selected && styles.statusButtonSelected,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                  >
+                    <Ionicons
+                      name={option.icon}
+                      size={20}
+                      color={selected ? colors.background : colors.secondary}
+                    />
+                    <Text
+                      style={[
+                        styles.statusButtonText,
+                        selected && styles.statusButtonTextSelected,
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+
+          {status === "attended" ? (
+            <Pressable style={styles.primaryButton} onPress={openNightForm}>
+              <Ionicons
+                name="book-outline"
+                size={19}
+                color={colors.background}
+              />
+              <Text style={styles.primaryButtonText}>Add to My Nights</Text>
+            </Pressable>
+          ) : null}
+        </View>
 
         <View style={styles.summaryCard}>
           <Text style={styles.sectionTitle}>At a glance</Text>
           <View style={styles.statRow}>
-            {event.stats.map((stat) => (
-              <View key={stat.label} style={styles.statBox}>
-                <Text style={styles.statLabel}>{stat.label}</Text>
-                <Text style={styles.statValue}>{stat.value}</Text>
-              </View>
-            ))}
+            <View style={styles.statBox}>
+              <Text style={styles.statLabel}>Vibe</Text>
+              <Text style={styles.statValue}>{event.vibeScore}/100</Text>
+            </View>
+
+            <View style={styles.statBox}>
+              <Text style={styles.statLabel}>Spend</Text>
+              <Text style={styles.statValue}>${event.spend}</Text>
+            </View>
+
+            <View style={styles.statBox}>
+              <Text style={styles.statLabel}>Duration</Text>
+              <Text style={styles.statValue}>{event.durationHours}h</Text>
+            </View>
           </View>
         </View>
 
@@ -54,15 +260,27 @@ export default function EventDetailScreen() {
         </View>
 
         <View style={styles.panel}>
-          <Text style={styles.sectionTitle}>Experience</Text>
+          <Text style={styles.sectionTitle}>Event notes</Text>
           <Text style={styles.notes}>{event.notes}</Text>
-          <View style={styles.listWrap}>
-            {event.lineup.map((item) => (
-              <View key={item} style={styles.listItem}>
-                <View style={styles.listBullet} />
-                <Text style={styles.listText}>{item}</Text>
-              </View>
-            ))}
+
+          <View style={styles.detailRow}>
+            <Ionicons
+              name="location-outline"
+              size={18}
+              color={colors.secondary}
+            />
+            <Text style={styles.detailText}>{location}</Text>
+          </View>
+
+          <View style={styles.detailRow}>
+            <Ionicons
+              name="time-outline"
+              size={18}
+              color={colors.secondary}
+            />
+            <Text style={styles.detailText}>
+              {event.startTime} to {event.endTime}
+            </Text>
           </View>
         </View>
       </ScrollView>
@@ -76,9 +294,87 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
+    width: "100%",
+    maxWidth: 900,
+    alignSelf: "center",
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
-    paddingBottom: spacing.xxl,
+    paddingBottom: spacing.xxl * 2,
+  },
+  statusPanel: {
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  statusDescription: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    marginTop: -spacing.sm,
+    marginBottom: spacing.md,
+  },
+  statusLoader: {
+    marginVertical: spacing.lg,
+  },
+  statusRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  statusButton: {
+    flex: 1,
+    minHeight: 76,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.xs,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+  },
+  statusButtonSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  statusButtonText: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  statusButtonTextSelected: {
+    color: colors.background,
+  },
+  primaryButton: {
+    minHeight: 50,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    borderRadius: 10,
+    backgroundColor: colors.primary,
+  },
+  primaryButtonText: {
+    color: colors.background,
+    fontSize: 13,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  secondaryButton: {
+    marginTop: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  secondaryButtonText: {
+    color: colors.text,
+    fontWeight: "700",
   },
   summaryCard: {
     backgroundColor: colors.surface,
@@ -96,27 +392,27 @@ const styles = StyleSheet.create({
   },
   statRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    gap: spacing.sm,
   },
   statBox: {
     flex: 1,
+    minWidth: 0,
     backgroundColor: colors.surfaceAlt,
     borderRadius: 10,
     paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
-    marginHorizontal: 4,
+    paddingHorizontal: spacing.xs,
     alignItems: "center",
   },
   statLabel: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 10,
     textTransform: "uppercase",
-    letterSpacing: 1,
+    letterSpacing: 0.8,
     marginBottom: 4,
   },
   statValue: {
     color: colors.text,
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: "800",
   },
   panel: {
@@ -154,23 +450,32 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     marginBottom: spacing.lg,
   },
-  listWrap: {
-    marginTop: spacing.sm,
-  },
-  listItem: {
+  detailRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: spacing.sm,
+    gap: spacing.sm,
+    marginTop: spacing.sm,
   },
-  listBullet: {
-    width: 8,
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: colors.primary,
-    marginRight: spacing.sm,
-  },
-  listText: {
-    color: colors.text,
+  detailText: {
+    flex: 1,
+    color: colors.textSecondary,
     fontSize: 14,
+  },
+  notFound: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.xl,
+  },
+  notFoundTitle: {
+    color: colors.text,
+    fontSize: 24,
+    fontWeight: "800",
+    marginTop: spacing.md,
+  },
+  notFoundText: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    marginTop: spacing.sm,
   },
 });
