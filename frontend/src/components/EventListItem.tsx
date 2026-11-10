@@ -2,6 +2,7 @@ import { Link } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
 
 import { EventEntry } from "../types/event";
+import { formatCurrency } from "../lib/formatCurrency";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
 
@@ -25,7 +26,7 @@ export function EventListItem({ event }: EventListItemProps) {
       <Text style={styles.meta}>{event.city}</Text>
       <Text style={styles.meta}>{event.date} · {event.startTime}–{event.endTime}</Text>
       <Text style={styles.meta}>{event.artists.join(", ")}</Text>
-      <Text style={styles.footer}>Vibe {event.vibeScore}/100 · ${event.spend}</Text>
+      <Text style={styles.footer}>Vibe {event.vibeScore}/100 · {formatCurrency(event.spend, "USD")}</Text>
     </Link>
   );
 }

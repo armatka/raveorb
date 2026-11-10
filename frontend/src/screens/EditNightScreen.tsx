@@ -1,13 +1,13 @@
-import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 import { EmptyState } from "../components/EmptyState";
 import { NightForm } from "../components/NightForm";
+import { Screen } from "../components/Screen";
+import { ScreenHeader } from "../components/ScreenHeader";
 import { nightsStorage } from "../lib/nightsStorage";
 import { colors } from "../theme/colors";
-import { spacing } from "../theme/spacing";
 import type { Night, NightInput } from "../types/Night";
 
 export default function EditNightScreen() {
@@ -38,18 +38,14 @@ export default function EditNightScreen() {
   };
 
   if (loading) {
-    return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>;
+    return <Screen><View style={styles.center}><ActivityIndicator color={colors.primary} /></View></Screen>;
   }
   if (error || !night) {
     return (
-      <View style={styles.container}>
-        <View style={styles.topBar}>
-          <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back">
-            <Ionicons name="arrow-back" size={22} color={colors.text} />
-          </Pressable>
-        </View>
+      <Screen edges={["left", "right", "bottom"]}>
+        <ScreenHeader title="Edit Night" onBack={() => router.back()} />
         <EmptyState title={error ? "Could not open night" : "Night not found"} message={error ? "Try again in a moment." : "This entry may have been removed from your journal."} icon="alert-circle-outline" />
-      </View>
+      </Screen>
     );
   }
 
@@ -57,18 +53,10 @@ export default function EditNightScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
   center: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.background,
-  },
-  topBar: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
   },
 });

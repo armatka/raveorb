@@ -5,20 +5,20 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
-  SafeAreaView,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 
 import EventDetailHeader from "../components/EventDetailHeader";
+import { Screen } from "../components/Screen";
 import { mockEvents, mockVenues } from "../data/mockData";
 import {
   eventStatusStorage,
   type EventStatus,
 } from "../lib/eventStatusStorage";
 import { colors } from "../theme/colors";
+import { formatCurrency } from "../lib/formatCurrency";
 import { spacing } from "../theme/spacing";
 
 const statusOptions: Array<{
@@ -92,7 +92,7 @@ export default function EventDetailScreen() {
 
   if (!event) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <Screen>
         <View style={styles.notFound}>
           <Ionicons
             name="alert-circle-outline"
@@ -107,7 +107,7 @@ export default function EventDetailScreen() {
             <Text style={styles.secondaryButtonText}>Go back</Text>
           </Pressable>
         </View>
-      </SafeAreaView>
+      </Screen>
     );
   }
 
@@ -158,11 +158,7 @@ export default function EventDetailScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
+    <Screen scrollable contentContainerStyle={styles.content}>
         <EventDetailHeader
           title={event.title}
           date={formattedDate}
@@ -238,7 +234,7 @@ export default function EventDetailScreen() {
 
             <View style={styles.statBox}>
               <Text style={styles.statLabel}>Spend</Text>
-              <Text style={styles.statValue}>${event.spend}</Text>
+              <Text style={styles.statValue}>{formatCurrency(event.spend, "USD")}</Text>
             </View>
 
             <View style={styles.statBox}>
@@ -283,16 +279,11 @@ export default function EventDetailScreen() {
             </Text>
           </View>
         </View>
-      </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
   content: {
     width: "100%",
     maxWidth: 900,

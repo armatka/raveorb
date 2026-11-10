@@ -1,9 +1,10 @@
 import { LinearGradient } from "expo-linear-gradient";
-import { SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 import Logo from "../components/Logo";
 import MetricCard from "../components/MetricCard";
 import RecommendationCard from "../components/RecommendationCard";
+import { Screen } from "../components/Screen";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
 
@@ -28,7 +29,7 @@ const recommendations = [
 
 export default function HomeScreen() {
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <Screen edges={["top", "left", "right"]} style={styles.safeArea}>
       <LinearGradient
         colors={[colors.background, colors.backgroundElevated, colors.background]}
         start={{ x: 0.2, y: 0 }}
@@ -140,7 +141,7 @@ export default function HomeScreen() {
           </View>
         </ScrollView>
       </LinearGradient>
-    </SafeAreaView>
+    </Screen>
   );
 }
 

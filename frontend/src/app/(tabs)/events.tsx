@@ -1,13 +1,14 @@
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import { EventListItem } from "../../components/EventListItem";
+import { Screen } from "../../components/Screen";
 import { mockEvents } from "../../data/mockData";
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
 
 export default function EventsScreen() {
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <Screen edges={["top", "left", "right"]} scrollable style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Event journal</Text>
 
       <View style={styles.list}>
@@ -15,7 +16,7 @@ export default function EventsScreen() {
           <EventListItem key={event.id} event={event} />
         ))}
       </View>
-    </ScrollView>
+    </Screen>
   );
 }
 

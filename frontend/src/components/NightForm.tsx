@@ -6,11 +6,14 @@ import { useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { RatingSelector } from "./RatingSelector";
-import type { Night, NightInput } from "../types/Night";
+import { Screen } from "./Screen";
+import { ScreenHeader } from "./ScreenHeader";
+import type { CurrencyCode, Night, NightInput } from "../types/Night";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
 import { theme } from "../theme/theme";
 import { persistNightPhotos } from "../lib/nightsStorage";
+import { getCurrencySymbol } from "../lib/formatCurrency";
 
 type NightFormProps = {
   heading: string;
@@ -29,6 +32,7 @@ type FormValues = {
   friends: string;
   rating: number;
   cost: string;
+  currency: CurrencyCode;
   notes: string;
   favoriteMoment: string;
   photos: string[];
@@ -63,6 +67,7 @@ function getInitialValues(
       : initialValues?.cost !== undefined
         ? String(initialValues.cost)
         : "",
+    currency: night?.currency ?? initialValues?.currency ?? "CAD",
     notes: night?.notes ?? initialValues?.notes ?? "",
     favoriteMoment:
       night?.favoriteMoment
@@ -141,6 +146,7 @@ export function NightForm({
       friends: splitList(values.friends),
       rating: values.rating,
       cost,
+      currency: values.currency,
       notes: values.notes.trim(),
       favoriteMoment: values.favoriteMoment.trim(),
       photos: values.photos,
@@ -158,13 +164,8 @@ export function NightForm({
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back" style={styles.backButton}>
-          <Ionicons name="arrow-back" size={20} color={colors.text} />
-        </Pressable>
-        <Text style={styles.heading}>{heading}</Text>
-      </View>
+    <Screen edges={["left", "right", "bottom"]} scrollable contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScreenHeader title={heading} onBack={() => router.back()} />
 
       <Text style={styles.sectionLabel}>THE NIGHT</Text>
       <Field label="Event name *" value={values.eventName} onChangeText={(text) => update("eventName", text)} placeholder="e.g. Afterglow" />
@@ -180,7 +181,28 @@ export function NightForm({
       <View style={styles.sectionDivider} />
       <Text style={styles.sectionLabel}>THE DETAILS</Text>
       <RatingSelector value={values.rating} onChange={(rating) => update("rating", rating)} />
-      <Field label="Total cost" value={values.cost} onChangeText={(text) => update("cost", text)} placeholder="0.00" keyboardType="decimal-pad" prefix="$" />
+      <View style={styles.currencyField}>
+        <Text style={styles.fieldLabel}>Currency</Text>
+        <View style={styles.currencyOptions}>
+          {currencyOptions.map((option) => {
+            const selected = values.currency === option.code;
+            return (
+              <Pressable
+                key={option.code}
+                onPress={() => update("currency", option.code)}
+                style={[styles.currencyOption, selected && styles.currencyOptionSelected]}
+                accessibilityRole="radio"
+                accessibilityState={{ selected }}
+                accessibilityLabel={`${option.code}, ${option.name}`}
+              >
+                <Text style={[styles.currencyCode, selected && styles.currencyCodeSelected]}>{option.code}</Text>
+                <Text style={[styles.currencyName, selected && styles.currencyNameSelected]}>{option.name}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+      <Field label="Total cost" value={values.cost} onChangeText={(text) => update("cost", text)} placeholder="0.00" keyboardType="decimal-pad" prefix={getCurrencySymbol(values.currency)} />
       <Field label="Favorite moment" value={values.favoriteMoment} onChangeText={(text) => update("favoriteMoment", text)} placeholder="The moment you want to remember" multiline />
       <Field label="Notes" value={values.notes} onChangeText={(text) => update("notes", text)} placeholder="Set, atmosphere, anything worth remembering" multiline />
       <View style={styles.photoSection}>
@@ -217,7 +239,7 @@ export function NightForm({
         <Text style={styles.submitText}>{saving ? "Saving..." : submitLabel}</Text>
         {!saving ? <Ionicons name="arrow-forward" size={18} color={colors.background} /> : null}
       </Pressable>
-    </ScrollView>
+    </Screen>
   );
 }
 
@@ -230,6 +252,12 @@ type FieldProps = {
   multiline?: boolean;
   prefix?: string;
 };
+
+const currencyOptions: Array<{ code: CurrencyCode; name: string }> = [
+  { code: "CAD", name: "Canadian dollar" },
+  { code: "USD", name: "US dollar" },
+  { code: "EUR", name: "Euro" },
+];
 
 function Field({ label, value, onChangeText, placeholder, keyboardType = "default", multiline, prefix }: FieldProps) {
   return (
@@ -265,28 +293,6 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.xxl * 2,
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: spacing.xl,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginRight: spacing.md,
-  },
-  heading: {
-    flex: 1,
-    color: colors.text,
-    fontSize: 25,
-    fontWeight: "700",
-  },
   sectionLabel: {
     color: colors.secondary,
     fontSize: 10,
@@ -301,6 +307,44 @@ const styles = StyleSheet.create({
   },
   field: {
     marginBottom: spacing.md,
+  },
+  currencyField: {
+    marginBottom: spacing.md,
+  },
+  currencyOptions: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  currencyOption: {
+    flex: 1,
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: spacing.xs,
+  },
+  currencyOptionSelected: {
+    borderColor: colors.primary,
+    backgroundColor: "rgba(212, 175, 55, 0.1)",
+  },
+  currencyCode: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  currencyCodeSelected: {
+    color: colors.accent,
+  },
+  currencyName: {
+    color: colors.muted,
+    fontSize: 9,
+    marginTop: 2,
+  },
+  currencyNameSelected: {
+    color: colors.textSecondary,
   },
   fieldLabel: {
     color: colors.textSecondary,

@@ -1,8 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Link } from "expo-router";
-import { StyleSheet, Text, View } from "react-native";
+import { router } from "expo-router";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { Night } from "../types/Night";
+import { formatCurrency } from "../lib/formatCurrency";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
 
@@ -19,16 +20,34 @@ function formatDate(value: string): string {
 
 export function NightCard({ night }: NightCardProps) {
   return (
-    <Link href={{ pathname: "/night/[id]", params: { id: night.id } }} style={styles.link}>
-      <View style={styles.card}>
+    <Pressable
+      onPress={() => router.push({ pathname: "/night/[id]", params: { id: night.id } })}
+      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${night.eventName}`}
+    >
         <View style={styles.topRow}>
           <Text style={styles.date}>{formatDate(night.date)}</Text>
-          {night.rating > 0 ? (
-            <View style={styles.rating}>
-              <Ionicons name="star" size={13} color={colors.primary} />
-              <Text style={styles.ratingText}>{night.rating}</Text>
-            </View>
-          ) : null}
+          <View style={styles.topActions}>
+            {night.rating > 0 ? (
+              <View style={styles.rating}>
+                <Ionicons name="star" size={13} color={colors.primary} />
+                <Text style={styles.ratingText}>{night.rating}</Text>
+              </View>
+            ) : null}
+            <Pressable
+              onPress={(event) => {
+                event.stopPropagation();
+                router.push({ pathname: "/night/[id]/edit", params: { id: night.id } });
+              }}
+              style={({ pressed }) => [styles.editButton, pressed && styles.editPressed]}
+              accessibilityRole="button"
+              accessibilityLabel={`Edit ${night.eventName}`}
+              hitSlop={0}
+            >
+              <Ionicons name="create-outline" size={18} color={colors.secondary} />
+            </Pressable>
+          </View>
         </View>
         <Text style={styles.name} numberOfLines={1}>{night.eventName}</Text>
         <Text style={styles.location} numberOfLines={1}>{night.venueName} · {night.city}</Text>
@@ -37,29 +56,48 @@ export function NightCard({ night }: NightCardProps) {
         ) : null}
         <View style={styles.bottomRow}>
           <Text style={styles.photoCount}>{night.photos.length > 0 ? `${night.photos.length} photo${night.photos.length === 1 ? "" : "s"}` : "Night journal"}</Text>
+          <Text style={styles.cost}>{formatCurrency(night.cost, night.currency)}</Text>
           <Ionicons name="arrow-forward" size={16} color={colors.secondary} />
         </View>
-      </View>
-    </Link>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  link: {
-    marginBottom: spacing.md,
-  },
   card: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 12,
     padding: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  pressed: {
+    opacity: 0.88,
   },
   topRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: spacing.sm,
+  },
+  topActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  editButton: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+  },
+  editPressed: {
+    backgroundColor: "rgba(212, 175, 55, 0.2)",
   },
   date: {
     color: colors.secondary,
@@ -105,5 +143,12 @@ const styles = StyleSheet.create({
   photoCount: {
     color: colors.muted,
     fontSize: 11,
+  },
+  cost: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: "600",
+    marginLeft: "auto",
+    marginRight: spacing.md,
   },
 });

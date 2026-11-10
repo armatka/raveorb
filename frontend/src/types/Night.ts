@@ -1,3 +1,5 @@
+export type CurrencyCode = "CAD" | "USD" | "EUR";
+
 export type Night = {
   id: string;
   date: string;
@@ -8,6 +10,7 @@ export type Night = {
   friends: string[];
   rating: number;
   cost: number;
+  currency: CurrencyCode;
   notes: string;
   favoriteMoment: string;
   photos: string[];

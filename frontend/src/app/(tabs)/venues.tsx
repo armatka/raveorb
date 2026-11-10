@@ -1,12 +1,13 @@
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
+import { Screen } from "../../components/Screen";
 import { mockVenues } from "../../data/mockData";
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
 
 export default function VenuesScreen() {
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <Screen edges={["top", "left", "right"]} scrollable style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Favorite venues</Text>
 
       {mockVenues.map((venue) => (
@@ -17,7 +18,7 @@ export default function VenuesScreen() {
           <Text style={styles.meta}>{venue.visits} visits</Text>
         </View>
       ))}
-    </ScrollView>
+    </Screen>
   );
 }
 

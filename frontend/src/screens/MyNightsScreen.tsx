@@ -1,10 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { EmptyState } from "../components/EmptyState";
 import { NightCard } from "../components/NightCard";
+import { Screen } from "../components/Screen";
 import { nightsStorage } from "../lib/nightsStorage";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
@@ -35,7 +36,7 @@ export default function MyNightsScreen() {
   );
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <Screen edges={["top", "left", "right"]} scrollable style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <View>
           <Text style={styles.eyebrow}>YOUR ARCHIVE</Text>
@@ -67,7 +68,7 @@ export default function MyNightsScreen() {
           {nights.map((night) => <NightCard key={night.id} night={night} />)}
         </View>
       )}
-    </ScrollView>
+    </Screen>
   );
 }
 

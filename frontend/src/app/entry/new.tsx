@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { router } from "expo-router";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
+import { Screen } from "../../components/Screen";
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
 import { theme } from "../../theme/theme";
@@ -56,7 +57,7 @@ export default function NewEntryScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <Screen scrollable contentContainerStyle={styles.content}>
       <Text style={styles.title}>Log a new night</Text>
 
       <TextInput
@@ -161,15 +162,11 @@ export default function NewEntryScreen() {
       <Pressable style={styles.saveButton} onPress={handleSave}>
         <Text style={styles.saveButtonText}>Save night</Text>
       </Pressable>
-    </ScrollView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
   content: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.xl,

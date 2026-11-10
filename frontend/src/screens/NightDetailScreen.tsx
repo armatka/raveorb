@@ -2,10 +2,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { EmptyState } from "../components/EmptyState";
+import { Screen } from "../components/Screen";
+import { ScreenHeader } from "../components/ScreenHeader";
 import { nightsStorage } from "../lib/nightsStorage";
+import { formatCurrency } from "../lib/formatCurrency";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
 import type { Night } from "../types/Night";
@@ -58,36 +61,32 @@ export default function NightDetailScreen() {
   };
 
   if (loading) {
-    return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>;
+    return (
+      <Screen edges={["left", "right", "bottom"]}>
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      </Screen>
+    );
   }
   if (error || !night) {
     return (
-      <View style={styles.container}>
-        <View style={styles.topBar}>
-          <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back">
-            <Ionicons name="arrow-back" size={22} color={colors.text} />
-          </Pressable>
-        </View>
+      <Screen edges={["left", "right", "bottom"]}>
+        <ScreenHeader onBack={() => router.back()} />
         <EmptyState title={error ? "Journal unavailable" : "Night not found"} message={error ? "This entry could not be loaded. Try again." : "This entry may have been deleted."} icon="alert-circle-outline" />
-      </View>
+      </Screen>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back" style={styles.iconButton}>
-          <Ionicons name="arrow-back" size={20} color={colors.text} />
-        </Pressable>
-        <View style={styles.actions}>
-          <Pressable onPress={() => router.push({ pathname: "/night/[id]/edit", params: { id } })} accessibilityRole="button" accessibilityLabel="Edit night" style={styles.iconButton}>
-            <Ionicons name="create-outline" size={19} color={colors.text} />
-          </Pressable>
-          <Pressable onPress={confirmDelete} accessibilityRole="button" accessibilityLabel="Delete night" style={[styles.iconButton, styles.deleteButton]}>
-            <Ionicons name="trash-outline" size={19} color={colors.error} />
-          </Pressable>
-        </View>
-      </View>
+    <Screen edges={["left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
+      <ScreenHeader
+        onBack={() => router.back()}
+        actions={[
+          { icon: "pencil-outline", label: "Edit", onPress: () => router.push({ pathname: "/night/[id]/edit", params: { id } }) },
+          { icon: "trash-outline", label: "Delete", onPress: confirmDelete, destructive: true },
+        ]}
+      />
 
       <View style={styles.hero}>
         <Text style={styles.date}>{formatDate(night.date)}</Text>
@@ -109,7 +108,7 @@ export default function NightDetailScreen() {
         <View style={styles.summaryDivider} />
         <View style={styles.summaryItem}>
           <Text style={styles.summaryLabel}>COST</Text>
-          <Text style={styles.summaryValue}>{new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(night.cost)}</Text>
+          <Text style={styles.summaryValue}>{formatCurrency(night.cost, night.currency)}</Text>
         </View>
         <View style={styles.summaryDivider} />
         <View style={styles.summaryItem}>
@@ -143,7 +142,7 @@ export default function NightDetailScreen() {
         </View>
       ) : null}
       <Text style={styles.updated}>Updated {new Date(night.updatedAt).toLocaleDateString()}</Text>
-    </ScrollView>
+    </Screen>
   );
 }
 
@@ -168,16 +167,11 @@ function DetailSection({ title, values }: DetailSectionProps) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
   content: {
     width: "100%",
     maxWidth: 800,
     alignSelf: "center",
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
     paddingBottom: spacing.xxl * 2,
   },
   center: {
@@ -185,29 +179,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.background,
-  },
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: spacing.xl,
-  },
-  actions: {
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
-  iconButton: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 20,
-  },
-  deleteButton: {
-    borderColor: "rgba(232, 120, 120, 0.3)",
   },
   hero: {
     marginBottom: spacing.xl,

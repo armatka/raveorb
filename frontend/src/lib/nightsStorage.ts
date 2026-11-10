@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import type { Night, NightInput } from "../types/Night";
+import type { CurrencyCode, Night, NightInput } from "../types/Night";
 import { Directory, File, Paths } from "expo-file-system";
 import { Platform } from "react-native";
 
@@ -44,7 +44,11 @@ function sortNewestFirst(nights: Night[]): Night[] {
   return [...nights].sort((first, second) => second.date.localeCompare(first.date));
 }
 
-function isNight(value: unknown): value is Night {
+function isCurrencyCode(value: unknown): value is CurrencyCode {
+  return value === "CAD" || value === "USD" || value === "EUR";
+}
+
+function isNight(value: unknown): value is Omit<Night, "currency"> & { currency?: unknown } {
   if (!value || typeof value !== "object") return false;
   const night = value as Partial<Night>;
   return typeof night.id === "string"
@@ -58,12 +62,20 @@ function isNight(value: unknown): value is Night {
     && night.friends.every((friend) => typeof friend === "string")
     && typeof night.rating === "number"
     && typeof night.cost === "number"
+    && (night.currency === undefined || isCurrencyCode(night.currency))
     && typeof night.notes === "string"
     && typeof night.favoriteMoment === "string"
     && Array.isArray(night.photos)
     && night.photos.every((photo) => typeof photo === "string")
     && typeof night.createdAt === "string"
     && typeof night.updatedAt === "string";
+}
+
+function normalizeNight(value: Omit<Night, "currency"> & { currency?: unknown }): Night {
+  return {
+    ...value,
+    currency: isCurrencyCode(value.currency) ? value.currency : "USD",
+  };
 }
 
 async function readAll(): Promise<Night[]> {
@@ -77,7 +89,12 @@ async function readAll(): Promise<Night[]> {
     return [];
   }
   if (!Array.isArray(parsed)) return [];
-  return sortNewestFirst(parsed.filter(isNight));
+  const validNights = parsed.filter(isNight);
+  const nights = validNights.map(normalizeNight);
+  if (validNights.some((night) => night.currency === undefined)) {
+    await writeAll(nights);
+  }
+  return sortNewestFirst(nights);
 }
 
 async function writeAll(nights: Night[]): Promise<void> {

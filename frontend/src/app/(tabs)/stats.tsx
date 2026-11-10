@@ -1,9 +1,11 @@
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import { ChartCard } from "../../components/ChartCard";
+import { Screen } from "../../components/Screen";
 import { StatCard } from "../../components/StatCard";
 import { mockEvents } from "../../data/mockData";
 import { getSummaryStats, getTopGenres, getVenueBreakdown } from "../../lib/stats";
+import { formatCurrency } from "../../lib/formatCurrency";
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
 
@@ -13,19 +15,19 @@ export default function StatsScreen() {
   const venueBreakdown = getVenueBreakdown(mockEvents);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <Screen edges={["top", "left", "right"]} scrollable style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Nightly stats</Text>
 
       <View style={styles.grid}>
         <StatCard title="Total nights" value={String(summary.totalEvents)} subtitle="logged" />
-        <StatCard title="Avg. spend" value={`$${summary.avgSpend}`} subtitle="per night" />
+        <StatCard title="Avg. spend" value={formatCurrency(summary.avgSpend, "USD")} subtitle="per night" />
         <StatCard title="Avg. duration" value={`${summary.avgHours.toFixed(1)}h`} subtitle="on the floor" />
         <StatCard title="Peak vibe" value={`${summary.avgVibe}`} subtitle="average score" />
       </View>
 
       <ChartCard title="Top genres" items={topGenres} />
       <ChartCard title="Top venues" items={venueBreakdown} />
-    </ScrollView>
+    </Screen>
   );
 }
 

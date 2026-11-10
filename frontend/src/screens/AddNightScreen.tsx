@@ -26,6 +26,7 @@ export default function AddNightScreen() {
     friends: [],
     rating: 0,
     cost: 0,
+    currency: "CAD",
     notes: "",
     favoriteMoment: "",
     photos: [],
