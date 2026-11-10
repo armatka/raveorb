@@ -5,6 +5,7 @@ import { nightsStorage } from "../lib/nightsStorage";
 import type { NightInput } from "../types/Night";
 
 type AddNightParams = {
+  sourceEventId?: string;
   eventName?: string;
   date?: string;
   venueName?: string;
@@ -16,6 +17,7 @@ export default function AddNightScreen() {
   const params = useLocalSearchParams<AddNightParams>();
 
   const initialValues: Partial<NightInput> = {
+    sourceEventId: params.sourceEventId,
     eventName: params.eventName ?? "",
     date: params.date ?? new Date().toISOString().slice(0, 10),
     venueName: params.venueName ?? "",
@@ -33,14 +35,9 @@ export default function AddNightScreen() {
   };
 
   const saveNight = async (input: NightInput) => {
-    const existingNights = await nightsStorage.list();
-
-    const existing = existingNights.find(
-      (night) =>
-        night.eventName.toLowerCase() === input.eventName.toLowerCase()
-        && night.date === input.date
-        && night.venueName.toLowerCase() === input.venueName.toLowerCase(),
-    );
+    const existing = input.sourceEventId
+      ? await nightsStorage.getBySourceEventId(input.sourceEventId)
+      : null;
 
     if (existing) {
       router.replace({

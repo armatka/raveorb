@@ -3,6 +3,7 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
   Pressable,
+  Alert,
   ScrollView,
   SectionList,
   StyleSheet,
@@ -102,6 +103,21 @@ export default function EventsScreen() {
     setGenres((current) => current.filter((item) => item !== genre));
   };
 
+  const updateEventStatus = async (eventId: string, nextStatus: EventStatus | null) => {
+    try {
+      await eventStatusStorage.set(eventId, nextStatus);
+      setStatuses((current) => {
+        if (nextStatus === null) {
+          const { [eventId]: _removed, ...remaining } = current;
+          return remaining;
+        }
+        return { ...current, [eventId]: nextStatus };
+      });
+    } catch {
+      Alert.alert("Could not update event", "Your status was not saved. Please try again.");
+    }
+  };
+
   const listHeader = (
     <View style={styles.headerContent}>
       <View style={styles.titleBlock}>
@@ -191,7 +207,13 @@ export default function EventsScreen() {
       <SectionList
         sections={sections}
         keyExtractor={(event) => event.id}
-        renderItem={({ item }) => <EventListItem event={item} status={statuses[item.id]} />}
+        renderItem={({ item }) => (
+          <EventListItem
+            event={item}
+            status={statuses[item.id]}
+            onStatusChange={(nextStatus) => updateEventStatus(item.id, nextStatus)}
+          />
+        )}
         renderSectionHeader={({ section }) => <SectionHeading section={section} />}
         ItemSeparatorComponent={ItemSeparator}
         ListHeaderComponent={listHeader}

@@ -15,6 +15,7 @@ import { Screen } from "../components/Screen";
 import { mockEvents, mockVenues } from "../data/mockData";
 import { eventStatusStorage, type EventStatus } from "../lib/eventStatusStorage";
 import { formatEventDate, formatEventPrice, formatEventSchedule } from "../lib/eventFormatting";
+import { nightsStorage } from "../lib/nightsStorage";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
 
@@ -32,6 +33,8 @@ export default function EventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [status, setStatus] = useState<EventStatus | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
+  const [linkedNightId, setLinkedNightId] = useState<string | null>(null);
+  const [loadingNight, setLoadingNight] = useState(true);
 
   const event = mockEvents.find((item) => item.id === id);
   const venue = event
@@ -44,22 +47,33 @@ export default function EventDetailScreen() {
 
       if (!id) {
         setLoadingStatus(false);
+        setLinkedNightId(null);
+        setLoadingNight(false);
         return () => {
           isCurrent = false;
         };
       }
 
       setLoadingStatus(true);
-      eventStatusStorage
-        .get(id)
-        .then((savedStatus) => {
-          if (isCurrent) setStatus(savedStatus);
+      setLoadingNight(true);
+      Promise.all([eventStatusStorage.get(id), nightsStorage.getBySourceEventId(id)])
+        .then(([savedStatus, linkedNight]) => {
+          if (isCurrent) {
+            setStatus(savedStatus);
+            setLinkedNightId(linkedNight?.id ?? null);
+          }
         })
         .catch(() => {
-          if (isCurrent) setStatus(null);
+          if (isCurrent) {
+            setStatus(null);
+            setLinkedNightId(null);
+          }
         })
         .finally(() => {
-          if (isCurrent) setLoadingStatus(false);
+          if (isCurrent) {
+            setLoadingStatus(false);
+            setLoadingNight(false);
+          }
         });
 
       return () => {
@@ -91,6 +105,7 @@ export default function EventDetailScreen() {
     router.push({
       pathname: "/night/new",
       params: {
+        sourceEventId: event.id,
         eventName: event.title,
         date: event.date,
         venueName,
@@ -100,21 +115,19 @@ export default function EventDetailScreen() {
     });
   };
 
-  const selectStatus = async (nextStatus: EventStatus) => {
-    try {
-      await eventStatusStorage.set(event.id, nextStatus);
-      setStatus(nextStatus);
+  const openLinkedNight = () => {
+    if (linkedNightId) {
+      router.push({ pathname: "/night/[id]", params: { id: linkedNightId } });
+      return;
+    }
+    openNightForm();
+  };
 
-      if (nextStatus === "attended") {
-        Alert.alert(
-          "Add this experience to My Nights?",
-          "RaveOrb can prefill your journal entry with event details. Personal rating, cost, and notes will stay blank.",
-          [
-            { text: "Not now", style: "cancel" },
-            { text: "Add to My Nights", onPress: openNightForm },
-          ],
-        );
-      }
+  const selectStatus = async (nextStatus: EventStatus) => {
+    const updatedStatus = status === nextStatus ? null : nextStatus;
+    try {
+      await eventStatusStorage.set(event.id, updatedStatus);
+      setStatus(updatedStatus);
     } catch {
       Alert.alert("Could not update event", "Your selection was not saved. Please try again.");
     }
@@ -143,9 +156,10 @@ export default function EventDetailScreen() {
                 <Pressable
                   key={option.value}
                   onPress={() => selectStatus(option.value)}
-                  style={[styles.statusButton, selected && styles.statusButtonSelected]}
+                  style={({ pressed }) => [styles.statusButton, selected && styles.statusButtonSelected, pressed && styles.statusButtonPressed]}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
+                  accessibilityLabel={selected ? `Remove ${option.label} status` : `Mark event ${option.label}`}
                 >
                   <Ionicons
                     name={option.icon}
@@ -162,10 +176,14 @@ export default function EventDetailScreen() {
         )}
 
         {status === "attended" ? (
-          <Pressable style={styles.primaryButton} onPress={openNightForm}>
-            <Ionicons name="book-outline" size={19} color={colors.background} />
-            <Text style={styles.primaryButtonText}>Add to My Nights</Text>
-          </Pressable>
+          loadingNight ? (
+            <ActivityIndicator color={colors.primary} style={styles.statusLoader} />
+          ) : (
+            <Pressable style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]} onPress={openLinkedNight} accessibilityRole="button" accessibilityLabel={linkedNightId ? "View in My Nights" : "Add to My Nights"}>
+              <Ionicons name={linkedNightId ? "book" : "book-outline"} size={19} color={colors.background} />
+              <Text style={styles.primaryButtonText}>{linkedNightId ? "View in My Nights" : "Add to My Nights"}</Text>
+            </Pressable>
+          )
         ) : null}
       </View>
 
@@ -280,6 +298,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
+  statusButtonPressed: {
+    opacity: 0.75,
+  },
   statusButtonText: {
     color: colors.textSecondary,
     fontSize: 11,
@@ -304,6 +325,9 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     textTransform: "uppercase",
     letterSpacing: 0.6,
+  },
+  primaryButtonPressed: {
+    opacity: 0.78,
   },
   secondaryButton: {
     marginTop: spacing.lg,

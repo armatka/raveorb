@@ -52,6 +52,7 @@ function isNight(value: unknown): value is Omit<Night, "currency"> & { currency?
   if (!value || typeof value !== "object") return false;
   const night = value as Partial<Night>;
   return typeof night.id === "string"
+    && (night.sourceEventId === undefined || typeof night.sourceEventId === "string")
     && typeof night.date === "string"
     && typeof night.eventName === "string"
     && typeof night.venueName === "string"
@@ -113,6 +114,11 @@ export const nightsStorage = {
   async get(id: string): Promise<Night | null> {
     const nights = await readAll();
     return nights.find((night) => night.id === id) ?? null;
+  },
+
+  async getBySourceEventId(sourceEventId: string): Promise<Night | null> {
+    const nights = await readAll();
+    return nights.find((night) => night.sourceEventId === sourceEventId) ?? null;
   },
 
   async create(input: NightInput): Promise<Night> {

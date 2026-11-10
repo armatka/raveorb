@@ -24,6 +24,7 @@ type NightFormProps = {
 };
 
 type FormValues = {
+  sourceEventId?: string;
   date: string;
   eventName: string;
   venueName: string;
@@ -49,6 +50,7 @@ function getInitialValues(
   initialValues?: Partial<NightInput>,
 ): FormValues {
   return {
+    sourceEventId: night?.sourceEventId ?? initialValues?.sourceEventId,
     date: night?.date ?? initialValues?.date ?? today,
     eventName: night?.eventName ?? initialValues?.eventName ?? "",
     venueName: night?.venueName ?? initialValues?.venueName ?? "",
@@ -138,6 +140,7 @@ export function NightForm({
     }
 
     const input: NightInput = {
+      sourceEventId: values.sourceEventId,
       date: values.date,
       eventName,
       venueName,

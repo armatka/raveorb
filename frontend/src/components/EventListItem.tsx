@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { Link } from "expo-router";
-import { StyleSheet, Text, View } from "react-native";
+import { router } from "expo-router";
+import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from "react-native";
 
 import type { EventEntry } from "../types/event";
 import type { EventStatus } from "../lib/eventStatusStorage";
@@ -12,6 +12,7 @@ import { spacing } from "../theme/spacing";
 type EventListItemProps = {
   event: EventEntry;
   status?: EventStatus;
+  onStatusChange?: (status: EventStatus | null) => Promise<void>;
 };
 
 const statusLabels: Record<EventStatus, string> = {
@@ -20,14 +21,27 @@ const statusLabels: Record<EventStatus, string> = {
   attended: "Attended",
 };
 
-export function EventListItem({ event, status }: EventListItemProps) {
+const statusIcons: Record<EventStatus, keyof typeof Ionicons.glyphMap> = {
+  interested: "heart",
+  going: "calendar-outline",
+  attended: "checkmark-circle",
+};
+
+const statusCycle: Array<EventStatus | null> = [null, "interested", "going", "attended"];
+
+export function EventListItem({ event, status, onStatusChange }: EventListItemProps) {
+  const nextStatus = statusCycle[(statusCycle.indexOf(status ?? null) + 1) % statusCycle.length];
+  const handleStatusPress = (pressEvent: GestureResponderEvent) => {
+    pressEvent.stopPropagation();
+    if (onStatusChange) void onStatusChange(nextStatus);
+  };
+
   return (
-    <Link
-      href={{
-        pathname: "/event/[id]",
-        params: { id: event.id },
-      }}
-      style={styles.card}
+    <Pressable
+      onPress={() => router.push({ pathname: "/event/[id]", params: { id: event.id } })}
+      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${event.title}`}
     >
       {event.imageUrl ? (
         <Image source={{ uri: event.imageUrl }} contentFit="cover" style={styles.image} accessibilityLabel={`${event.title} event image`} />
@@ -50,12 +64,29 @@ export function EventListItem({ event, status }: EventListItemProps) {
           <Text style={styles.price}>{formatEventPrice(event)}</Text>
           {status ? (
             <View style={styles.statusBadge}>
+              <Ionicons name={statusIcons[status]} size={13} color={colors.secondary} />
               <Text style={styles.statusText}>{statusLabels[status]}</Text>
             </View>
           ) : null}
+          {onStatusChange ? (
+            <Pressable
+              onPress={handleStatusPress}
+              style={({ pressed }) => [styles.quickStatusButton, pressed && styles.quickStatusPressed]}
+              accessibilityRole="button"
+              accessibilityLabel={nextStatus ? `Mark ${event.title} ${nextStatus}` : `Clear status for ${event.title}`}
+              accessibilityHint="Cycles this event's status without opening event details"
+              hitSlop={0}
+            >
+              <Ionicons
+                name={nextStatus ? statusIcons[nextStatus] : "close-circle-outline"}
+                size={17}
+                color={nextStatus ? colors.secondary : colors.muted}
+              />
+            </Pressable>
+          ) : null}
         </View>
       </View>
-    </Link>
+    </Pressable>
   );
 }
 
@@ -67,6 +98,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     overflow: "hidden",
     marginBottom: spacing.md,
+  },
+  cardPressed: {
+    opacity: 0.9,
   },
   image: {
     width: "100%",
@@ -119,7 +153,7 @@ const styles = StyleSheet.create({
   footer: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: spacing.sm,
     marginTop: spacing.sm,
   },
   artists: {
@@ -139,6 +173,9 @@ const styles = StyleSheet.create({
   },
   statusBadge: {
     minHeight: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
     justifyContent: "center",
     paddingHorizontal: spacing.sm,
     borderRadius: 8,
@@ -150,5 +187,20 @@ const styles = StyleSheet.create({
     color: colors.secondary,
     fontSize: 10,
     fontWeight: "700",
+  },
+  quickStatusButton: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: "auto",
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+  },
+  quickStatusPressed: {
+    opacity: 0.7,
+    backgroundColor: "rgba(212, 175, 55, 0.12)",
   },
 });

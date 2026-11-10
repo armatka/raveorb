@@ -2,6 +2,7 @@ export type CurrencyCode = "CAD" | "USD" | "EUR";
 
 export type Night = {
   id: string;
+  sourceEventId?: string;
   date: string;
   eventName: string;
   venueName: string;
