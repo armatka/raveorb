@@ -26,6 +26,7 @@ export function getHomeRecommendations(
   statuses: EventStatuses,
   now = new Date(),
   limit = 3,
+  city: string | null = null,
 ): HomeRecommendation[] {
   const eventById = new Map(events.map((event) => [event.id, event]));
   const attendedEventIds = new Set(
@@ -63,7 +64,8 @@ export function getHomeRecommendations(
 
   const today = localDateKey(now);
   return events
-    .filter((event) => event.date >= today && !attendedEventIds.has(event.id))
+    .filter((event) => event.date >= today && !attendedEventIds.has(event.id)
+      && (!city || normalize(event.city) === normalize(city)))
     .map((event) => {
       const matchedGenres = event.genres.filter((genre) => attendedGenres.has(normalize(genre)));
       const cityMatch = highlyRatedCities.has(normalize(event.city));

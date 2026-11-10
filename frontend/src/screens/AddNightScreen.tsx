@@ -2,6 +2,7 @@ import { router, useLocalSearchParams } from "expo-router";
 
 import { NightForm } from "../components/NightForm";
 import { nightsStorage } from "../lib/nightsStorage";
+import { formatCalendarDate } from "../lib/calendarDate";
 import type { NightInput } from "../types/Night";
 
 type AddNightParams = {
@@ -19,7 +20,7 @@ export default function AddNightScreen() {
   const initialValues: Partial<NightInput> = {
     sourceEventId: params.sourceEventId,
     eventName: params.eventName ?? "",
-    date: params.date ?? new Date().toISOString().slice(0, 10),
+    date: params.date ?? formatCalendarDate(new Date()),
     venueName: params.venueName ?? "",
     city: params.city ?? "",
     artistsSeen: params.artists

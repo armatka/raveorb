@@ -1,6 +1,6 @@
 import type { EventEntry, EventType } from "../types/event";
 
-export type DiscoverySectionId = "tonight" | "weekend" | "upcoming";
+export type DiscoverySectionId = "tonight" | "weekend" | "next-7-days" | "upcoming";
 export type DiscoveryDateRange = "tonight" | "weekend" | "next-7-days" | "next-30-days" | "all-upcoming";
 export type DiscoveryTypeFilter = "all" | EventType;
 
@@ -17,10 +17,11 @@ export type EventSection = {
   data: EventEntry[];
 };
 
-const sectionOrder: DiscoverySectionId[] = ["tonight", "weekend", "upcoming"];
+const sectionOrder: DiscoverySectionId[] = ["tonight", "weekend", "next-7-days", "upcoming"];
 const sectionTitles: Record<DiscoverySectionId, string> = {
   tonight: "Tonight",
   weekend: "This Weekend",
+  "next-7-days": "Next 7 Days",
   upcoming: "Upcoming",
 };
 
@@ -63,6 +64,8 @@ export function getDiscoverySection(
   if (eventDate > today && eventDate >= weekend.start && eventDate <= weekend.end) {
     return "weekend";
   }
+  const difference = dayDifference(eventDate, today);
+  if (difference !== null && difference <= 7) return "next-7-days";
   return "upcoming";
 }
 
@@ -123,6 +126,7 @@ export function groupDiscoveryEvents(events: EventEntry[], now = new Date()): Ev
   const grouped: Record<DiscoverySectionId, EventEntry[]> = {
     tonight: [],
     weekend: [],
+    "next-7-days": [],
     upcoming: [],
   };
 

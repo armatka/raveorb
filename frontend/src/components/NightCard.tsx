@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { router } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -28,7 +29,7 @@ export function NightCard({ night, layout = "timeline", showConnector = true }: 
       {isTimeline ? (
         <View style={styles.timelineRail}>
           <View style={styles.timelineMarker} />
-          <View style={[styles.timelineConnector, !showConnector && styles.hiddenConnector]} />
+          <View style={[styles.timelineConnector, !showConnector && styles.lastConnector]} />
         </View>
       ) : null}
       <View style={styles.cardSurface}>
@@ -49,21 +50,24 @@ export function NightCard({ night, layout = "timeline", showConnector = true }: 
             ) : null}
           </View>
         </View>
-        <Text style={styles.name} numberOfLines={2}>{night.eventName}</Text>
-        <Text style={styles.location} numberOfLines={1}>{night.venueName} · {night.city}</Text>
-        {night.artistsSeen.length > 0 ? (
-          <Text style={styles.artists} numberOfLines={1}>{night.artistsSeen.join(" · ")}</Text>
-        ) : null}
+        <View style={styles.bodyRow}>
+          <View style={styles.bodyText}>
+            <Text style={styles.name} numberOfLines={2}>{night.eventName}</Text>
+            <Text style={styles.location} numberOfLines={1}>{night.venueName} · {night.city}</Text>
+            {night.artistsSeen.length > 0 ? (
+              <Text style={styles.artists} numberOfLines={1}>{night.artistsSeen.join(" · ")}</Text>
+            ) : null}
+          </View>
+          {night.photos[0] ? (
+            <Image source={{ uri: night.photos[0] }} contentFit="cover" style={styles.thumbnail} accessibilityLabel={`${night.eventName} photo`} />
+          ) : null}
+        </View>
         <View style={styles.bottomRow}>
           <View style={styles.metadataRow}>
             <Ionicons name="images-outline" size={13} color={colors.muted} />
-            <Text style={styles.photoCount}>{night.photos.length}</Text>
-            {night.friends.length > 0 ? (
-              <>
-                <Ionicons name="people-outline" size={14} color={colors.muted} />
-                <Text style={styles.photoCount}>{night.friends.length}</Text>
-              </>
-            ) : null}
+            <Text style={styles.photoCount}>{night.photos.length} {night.photos.length === 1 ? "photo" : "photos"}</Text>
+            <Ionicons name="people-outline" size={14} color={colors.muted} />
+            <Text style={styles.photoCount}>{night.friends.length}</Text>
           </View>
           <Text style={styles.cost}>{formatCurrency(night.cost, night.currency)}</Text>
         </View>
@@ -109,10 +113,10 @@ const styles = StyleSheet.create({
     top: spacing.xl,
     bottom: -spacing.md,
     width: 1,
-    backgroundColor: colors.border,
+    backgroundColor: "rgba(212, 175, 55, 0.35)",
   },
-  hiddenConnector: {
-    display: "none",
+  lastConnector: {
+    bottom: spacing.md,
   },
   cardSurface: {
     flex: 1,
@@ -178,6 +182,21 @@ const styles = StyleSheet.create({
     fontSize: 19,
     fontWeight: "700",
     marginBottom: 4,
+  },
+  bodyRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.md,
+  },
+  bodyText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  thumbnail: {
+    width: 64,
+    height: 64,
+    borderRadius: 8,
+    backgroundColor: colors.surfaceAlt,
   },
   location: {
     color: colors.textSecondary,

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { RatingSelector } from "./RatingSelector";
+import { DateInput } from "./DateInput";
 import { Screen } from "./Screen";
 import { ScreenHeader } from "./ScreenHeader";
 import type { CurrencyCode, Night, NightInput } from "../types/Night";
@@ -15,6 +16,7 @@ import { persistNightPhotos } from "../lib/nightsStorage";
 import { getCurrencySymbol } from "../lib/formatCurrency";
 import { goBackOrReplace } from "../lib/navigation";
 import { showAlert } from "../lib/showAlert";
+import { formatCalendarDate, parseCalendarDate } from "../lib/calendarDate";
 
 type NightFormProps = {
   heading: string;
@@ -40,8 +42,6 @@ type FormValues = {
   photos: string[];
 };
 
-const today = new Date().toISOString().slice(0, 10);
-
 function splitList(value: string): string[] {
   return value.split(",").map((item) => item.trim()).filter(Boolean);
 }
@@ -52,7 +52,7 @@ function getInitialValues(
 ): FormValues {
   return {
     sourceEventId: night?.sourceEventId ?? initialValues?.sourceEventId,
-    date: night?.date ?? initialValues?.date ?? today,
+    date: night?.date ?? initialValues?.date ?? formatCalendarDate(new Date()),
     eventName: night?.eventName ?? initialValues?.eventName ?? "",
     venueName: night?.venueName ?? initialValues?.venueName ?? "",
     city: night?.city ?? initialValues?.city ?? "",
@@ -123,16 +123,10 @@ export function NightForm({
     const eventName = values.eventName.trim();
     const venueName = values.venueName.trim();
     const city = values.city.trim();
-    const dateParts = values.date.split("-").map(Number);
-    const parsedDate = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
     const cost = values.cost.trim() ? Number(values.cost) : 0;
 
-    if (!eventName || !venueName || !city || !/^\d{4}-\d{2}-\d{2}$/.test(values.date)
-      || Number.isNaN(parsedDate.getTime())
-      || parsedDate.getFullYear() !== dateParts[0]
-      || parsedDate.getMonth() !== dateParts[1] - 1
-      || parsedDate.getDate() !== dateParts[2]) {
-      showAlert("Complete the required fields", "Add an event, venue, city, and date in YYYY-MM-DD format.");
+    if (!eventName || !venueName || !city || !parseCalendarDate(values.date)) {
+      showAlert("Complete the required fields", "Add an event, venue, city, and a valid date.");
       return;
     }
     if (!Number.isFinite(cost) || cost < 0) {
@@ -173,7 +167,7 @@ export function NightForm({
 
       <Text style={styles.sectionLabel}>THE NIGHT</Text>
       <Field label="Event name *" value={values.eventName} onChangeText={(text) => update("eventName", text)} placeholder="e.g. Afterglow" />
-      <Field label="Date *" value={values.date} onChangeText={(text) => update("date", text)} placeholder="YYYY-MM-DD" keyboardType="numbers-and-punctuation" />
+      <DateInput label="Date *" value={values.date} onChange={(date) => update("date", date)} />
       <Field label="Venue *" value={values.venueName} onChangeText={(text) => update("venueName", text)} placeholder="Venue name" />
       <Field label="City *" value={values.city} onChangeText={(text) => update("city", text)} placeholder="City" />
 

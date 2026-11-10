@@ -3,6 +3,7 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   ScrollView,
   SectionList,
@@ -11,18 +12,19 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { EventListItem } from "../../components/EventListItem";
 import { Screen } from "../../components/Screen";
 import {
   filterDiscoveryEvents,
   groupDiscoveryEvents,
-  matchesDiscoveryDateRange,
   type DiscoveryDateRange,
   type DiscoveryTypeFilter,
   type EventSection,
 } from "../../lib/eventDiscovery";
 import { eventStatusStorage, type EventStatus } from "../../lib/eventStatusStorage";
+import { preferencesStorage } from "../../lib/preferencesStorage";
 import { showAlert } from "../../lib/showAlert";
 import { eventsRepository } from "../../services/eventsRepository";
 import { colors } from "../../theme/colors";
@@ -49,6 +51,9 @@ export default function EventsScreen() {
   const [events, setEvents] = useState<EventEntry[]>([]);
   const [query, setQuery] = useState("");
   const [city, setCity] = useState<string | null>(null);
+  const [locationOpen, setLocationOpen] = useState(false);
+  const [savingLocation, setSavingLocation] = useState(false);
+  const [locationError, setLocationError] = useState(false);
   const [genres, setGenres] = useState<string[]>([]);
   const [type, setType] = useState<DiscoveryTypeFilter>("all");
   const [dateRange, setDateRange] = useState<DiscoveryDateRange>("all-upcoming");
@@ -64,8 +69,8 @@ export default function EventsScreen() {
       let isCurrent = true;
       setNow(new Date());
       setLoadingEvents(true);
-      Promise.allSettled([eventsRepository.listEvents(), eventStatusStorage.list()])
-        .then(([eventResult, statusResult]) => {
+      Promise.allSettled([eventsRepository.listEvents(), eventStatusStorage.list(), preferencesStorage.get()])
+        .then(([eventResult, statusResult, preferenceResult]) => {
           if (!isCurrent) return;
           if (eventResult.status === "fulfilled") {
             setEvents(eventResult.value);
@@ -75,6 +80,8 @@ export default function EventsScreen() {
           }
           if (statusResult.status === "fulfilled") setStatuses(statusResult.value);
           setStatusLoadError(statusResult.status === "rejected");
+          if (preferenceResult.status === "fulfilled") setCity(preferenceResult.value.discoveryCity);
+          setLocationError(preferenceResult.status === "rejected");
         })
         .finally(() => {
           if (isCurrent) setLoadingEvents(false);
@@ -86,8 +93,8 @@ export default function EventsScreen() {
   );
 
   const cityOptions = useMemo(
-    () => [...new Set(events.map((event) => event.city))].sort((first, second) => first.localeCompare(second)),
-    [events],
+    () => [...new Set([...events.map((event) => event.city).filter(Boolean), ...(city ? [city] : [])])].sort((first, second) => first.localeCompare(second)),
+    [city, events],
   );
   const genreOptions = useMemo(
     () => [...new Set(events.flatMap((event) => event.genres))].sort((first, second) => first.localeCompare(second)),
@@ -98,18 +105,28 @@ export default function EventsScreen() {
     [city, dateRange, events, genres, now, query, type],
   );
   const sections = useMemo(() => groupDiscoveryEvents(visibleEvents, now), [now, visibleEvents]);
-  const upcomingCount = useMemo(
-    () => events.filter((event) => matchesDiscoveryDateRange(event.date, "all-upcoming", now)).length,
-    [events, now],
-  );
-  const isFiltered = Boolean(query.trim()) || city !== null || genres.length > 0 || type !== "all" || dateRange !== "all-upcoming";
+  const isFiltered = Boolean(query.trim()) || genres.length > 0 || type !== "all" || dateRange !== "all-upcoming";
 
   const clearAll = () => {
     setQuery("");
-    setCity(null);
     setGenres([]);
     setType("all");
     setDateRange("all-upcoming");
+  };
+
+  const selectCity = async (nextCity: string | null) => {
+    if (savingLocation) return;
+    setSavingLocation(true);
+    try {
+      await preferencesStorage.setDiscoveryCity(nextCity);
+      setCity(nextCity);
+      setLocationError(false);
+      setLocationOpen(false);
+    } catch {
+      showAlert("Could not save location", "Your discovery location was not changed. Please try again.");
+    } finally {
+      setSavingLocation(false);
+    }
   };
 
   const removeGenre = (genre: string) => {
@@ -136,8 +153,17 @@ export default function EventsScreen() {
       <View style={styles.titleBlock}>
         <Text style={styles.eyebrow}>RAVEORB DISCOVERY</Text>
         <Text style={styles.title}>Discover</Text>
-        <Text style={styles.subtitle}>Find your next night</Text>
+        <Pressable onPress={() => setLocationOpen(true)} disabled={loadingEvents || locationError} style={styles.locationButton} accessibilityRole="button" accessibilityLabel={`Discovery location: ${city ?? "All locations"}`} accessibilityHint="Choose a discovery location">
+          <Ionicons name="location-outline" size={19} color={colors.secondary} />
+          <Text style={styles.locationText} numberOfLines={1}>{city ?? "All locations"}</Text>
+          <Ionicons name="chevron-down" size={18} color={colors.secondary} />
+        </Pressable>
       </View>
+      {locationError ? (
+        <Pressable onPress={() => setRetryToken((token) => token + 1)} style={styles.retryButton} accessibilityRole="button" accessibilityLabel="Retry loading location preference">
+          <Text style={styles.retryText}>Location unavailable. Retry</Text>
+        </Pressable>
+      ) : null}
       {statusLoadError ? (
         <Pressable onPress={() => setRetryToken((token) => token + 1)} style={styles.retryButton} accessibilityRole="button" accessibilityLabel="Retry loading event statuses">
           <Text style={styles.retryText}>Event statuses unavailable. Retry</Text>
@@ -161,12 +187,6 @@ export default function EventsScreen() {
         ) : null}
       </View>
       <FilterRail
-        label="CITY"
-        options={[{ label: "All cities", value: "all" }, ...cityOptions.map((item) => ({ label: item, value: item }))]}
-        selectedValues={[city ?? "all"]}
-        onSelect={(value) => setCity(value === "all" ? null : value)}
-      />
-      <FilterRail
         label="GENRE"
         options={genreOptions.map((item) => ({ label: item, value: item }))}
         selectedValues={genres}
@@ -186,7 +206,6 @@ export default function EventsScreen() {
       {isFiltered ? (
         <View style={styles.activeFilters}>
           {query.trim() ? <ActiveFilter label={`Search: ${query.trim()}`} onRemove={() => setQuery("")} /> : null}
-          {city ? <ActiveFilter label={city} onRemove={() => setCity(null)} /> : null}
           {genres.map((genre) => <ActiveFilter key={genre} label={genre} onRemove={() => removeGenre(genre)} />)}
           {type !== "all" ? <ActiveFilter label={eventTypeOptions.find((option) => option.value === type)?.label ?? type} onRemove={() => setType("all")} /> : null}
           {dateRange !== "all-upcoming" ? <ActiveFilter label={dateRangeOptions.find((option) => option.value === dateRange)?.label ?? dateRange} onRemove={() => setDateRange("all-upcoming")} /> : null}
@@ -197,11 +216,7 @@ export default function EventsScreen() {
 
   const emptyMessage = eventLoadError
     ? { title: "Discovery unavailable", message: eventLoadError }
-    : upcomingCount === 0
-      ? { title: "No upcoming events", message: "New nights will appear here as the discovery lineup is updated." }
-      : query.trim()
-        ? { title: "No search matches", message: "Try another artist, venue, genre, or city." }
-        : { title: "No events match these filters", message: "Remove a filter or choose a wider date range." };
+    : { title: "No events found", message: city ? `No events found in ${city} with these filters.` : "No events found with these filters." };
 
   return (
     <Screen edges={["top", "left", "right"]} style={styles.container}>
@@ -214,13 +229,33 @@ export default function EventsScreen() {
         renderSectionHeader={({ section }) => <SectionHeading section={section} />}
         ItemSeparatorComponent={ItemSeparator}
         ListHeaderComponent={listHeader}
-        ListEmptyComponent={loadingEvents ? <ActivityIndicator color={colors.primary} style={styles.emptyLoader} /> : <EmptyDiscovery title={emptyMessage.title} message={emptyMessage.message} actionLabel={eventLoadError ? "Retry" : undefined} onAction={eventLoadError ? () => setRetryToken((token) => token + 1) : undefined} />}
+        ListEmptyComponent={loadingEvents ? <ActivityIndicator color={colors.primary} style={styles.emptyLoader} /> : <EmptyDiscovery title={emptyMessage.title} message={emptyMessage.message} actionLabel={eventLoadError ? "Retry" : "Clear filters"} onAction={eventLoadError ? () => setRetryToken((token) => token + 1) : clearAll} onViewAll={!eventLoadError && city ? () => { void selectCity(null); } : undefined} />}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         stickySectionHeadersEnabled={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       />
+      <Modal visible={locationOpen} transparent animationType="slide" onRequestClose={() => setLocationOpen(false)}>
+        <SafeAreaView style={styles.modalOverlay}>
+          <View style={styles.locationSheet} accessibilityViewIsModal>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Choose location</Text>
+              <Pressable onPress={() => setLocationOpen(false)} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Close location selector">
+                <Ionicons name="close" size={22} color={colors.text} />
+              </Pressable>
+            </View>
+            <ScrollView>
+              {[null, ...cityOptions].map((option) => (
+                <Pressable key={option ?? "all-locations"} onPress={() => { void selectCity(option); }} disabled={savingLocation} style={styles.locationOption} accessibilityRole="radio" accessibilityState={{ checked: city === option, disabled: savingLocation }} aria-checked={city === option} accessibilityLabel={option ?? "All locations"}>
+                  <Text style={styles.locationOptionText}>{option ?? "All locations"}</Text>
+                  {city === option ? <Ionicons name="checkmark" size={20} color={colors.primary} /> : null}
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        </SafeAreaView>
+      </Modal>
     </Screen>
   );
 }
@@ -275,7 +310,7 @@ function ItemSeparator() {
   return <View style={styles.itemSeparator} />;
 }
 
-function EmptyDiscovery({ title, message, actionLabel, onAction }: { title: string; message: string; actionLabel?: string; onAction?: () => void }) {
+function EmptyDiscovery({ title, message, actionLabel, onAction, onViewAll }: { title: string; message: string; actionLabel?: string; onAction?: () => void; onViewAll?: () => void }) {
   return (
     <View style={styles.emptyState}>
       <Ionicons name="radio-outline" size={28} color={colors.secondary} />
@@ -286,6 +321,7 @@ function EmptyDiscovery({ title, message, actionLabel, onAction }: { title: stri
           <Text style={styles.retryText}>{actionLabel}</Text>
         </Pressable>
       ) : null}
+      {onViewAll ? <Pressable onPress={onViewAll} style={styles.viewAllButton} accessibilityRole="button" accessibilityLabel="View all locations"><Text style={styles.viewAllText}>View all locations</Text></Pressable> : null}
     </View>
   );
 }
@@ -297,7 +333,15 @@ const styles = StyleSheet.create({
   titleBlock: { marginBottom: spacing.lg },
   eyebrow: { color: colors.secondary, fontSize: 10, fontWeight: "700", letterSpacing: 1.5, marginBottom: spacing.xs },
   title: { color: colors.text, fontSize: 32, fontWeight: "700" },
-  subtitle: { color: colors.textSecondary, fontSize: 14, marginTop: spacing.xs },
+  locationButton: { minHeight: 44, flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: spacing.xs },
+  locationText: { color: colors.secondary, fontSize: 17, fontWeight: "700", flexShrink: 1 },
+  modalOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0, 0, 0, 0.65)" },
+  locationSheet: { maxHeight: "75%", backgroundColor: colors.surface, borderTopLeftRadius: 12, borderTopRightRadius: 12, paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
+  sheetHeader: { minHeight: 60, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  sheetTitle: { color: colors.text, fontSize: 18, fontWeight: "700" },
+  closeButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  locationOption: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: colors.border },
+  locationOptionText: { color: colors.text, fontSize: 15 },
   searchBox: { minHeight: 50, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 10, marginBottom: spacing.md },
   searchInput: { flex: 1, minHeight: 48, color: colors.text, fontSize: 14 },
   clearSearch: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
@@ -326,4 +370,6 @@ const styles = StyleSheet.create({
   emptyLoader: { marginTop: spacing.xxl * 2 },
   retryButton: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.lg, borderRadius: 9, backgroundColor: colors.primary },
   retryText: { color: colors.background, fontSize: 12, fontWeight: "800" },
+  viewAllButton: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.lg, marginTop: spacing.sm },
+  viewAllText: { color: colors.secondary, fontSize: 12, fontWeight: "700" },
 });

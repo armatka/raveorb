@@ -14,6 +14,7 @@ import { eventStatusStorage, type EventStatus } from "../lib/eventStatusStorage"
 import { getHomeRecommendations } from "../lib/homeRecommendations";
 import { calculateNightStats } from "../lib/nightStats";
 import { nightsStorage } from "../lib/nightsStorage";
+import { preferencesStorage } from "../lib/preferencesStorage";
 import { eventsRepository } from "../services/eventsRepository";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
@@ -27,6 +28,8 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [eventLoadError, setEventLoadError] = useState<string | null>(null);
+  const [discoveryCity, setDiscoveryCity] = useState<string | null>(null);
+  const [locationError, setLocationError] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const [retryToken, setRetryToken] = useState(0);
 
@@ -36,8 +39,8 @@ export default function HomeScreen() {
       setLoading(true);
       setLoadError(false);
       setNow(new Date());
-      Promise.allSettled([nightsStorage.list(), eventStatusStorage.list(), eventsRepository.listEvents()])
-        .then(([nightResult, statusResult, eventResult]) => {
+      Promise.allSettled([nightsStorage.list(), eventStatusStorage.list(), eventsRepository.listEvents(), preferencesStorage.get()])
+        .then(([nightResult, statusResult, eventResult, preferenceResult]) => {
           if (!isCurrent) return;
           if (nightResult.status === "fulfilled") {
             setNights(nightResult.value);
@@ -52,6 +55,8 @@ export default function HomeScreen() {
           } else {
             setEventLoadError(eventResult.reason instanceof Error ? eventResult.reason.message : "Could not load events.");
           }
+          if (preferenceResult.status === "fulfilled") setDiscoveryCity(preferenceResult.value.discoveryCity);
+          setLocationError(preferenceResult.status === "rejected");
         })
         .finally(() => {
           if (isCurrent) setLoading(false);
@@ -63,18 +68,18 @@ export default function HomeScreen() {
   const currentYear = String(now.getFullYear());
   const allTimePulse = useMemo(() => calculateNightStats(nights, null, now), [nights, now]);
   const yearPulse = useMemo(() => calculateNightStats(nights, currentYear, now), [currentYear, nights, now]);
-  const recommendations = useMemo(() => getHomeRecommendations(nights, events, statuses, now), [events, nights, now, statuses]);
+  const recommendations = useMemo(() => getHomeRecommendations(nights, events, statuses, now, 3, discoveryCity), [discoveryCity, events, nights, now, statuses]);
   const hasJournalBasedRecommendations = recommendations.some((item) => item.reason !== "Upcoming event in Discovery");
   const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const nextEvent = useMemo(() => {
     const futureEvents = events
-      .filter((event) => event.date >= todayKey)
+      .filter((event) => event.date >= todayKey && (!discoveryCity || event.city.toLocaleLowerCase() === discoveryCity.toLocaleLowerCase()))
       .sort((first, second) => first.date.localeCompare(second.date) || first.startTime.localeCompare(second.startTime));
     const goingEvent = futureEvents.find((event) => statuses[event.id] === "going");
     if (goingEvent) return { event: goingEvent, status: "going" as const };
     const interestedEvent = futureEvents.find((event) => statuses[event.id] === "interested");
     return interestedEvent ? { event: interestedEvent, status: "interested" as const } : null;
-  }, [events, now, statuses, todayKey]);
+  }, [discoveryCity, events, statuses, todayKey]);
   const recentNights = useMemo(
     () => [...nights].sort((first, second) => second.date.localeCompare(first.date)).slice(0, 3),
     [nights],
@@ -132,9 +137,11 @@ export default function HomeScreen() {
 
           <View style={styles.discoveryCard}>
             <Text style={styles.discoveryTitle}>Next up</Text>
-            {eventLoadError ? (
+            {loading ? (
+              <ActivityIndicator color={colors.primary} style={styles.inlineLoader} />
+            ) : eventLoadError || locationError ? (
               <View style={styles.nextEvent}>
-                <Text style={styles.discoveryCopy}>{eventLoadError}</Text>
+                <Text style={styles.discoveryCopy}>{eventLoadError ?? "Your discovery location could not be loaded."}</Text>
                 <Pressable onPress={() => setRetryToken((token) => token + 1)} style={styles.discoveryButton} accessibilityRole="button">
                   <Text style={styles.discoveryButtonText}>Retry</Text>
                   <Ionicons name="refresh" size={17} color={colors.background} />
@@ -163,7 +170,7 @@ export default function HomeScreen() {
 
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>For you</Text>
-            <Text style={styles.sectionMeta}>{hasJournalBasedRecommendations ? "Journal-based" : "Discovery"}</Text>
+            <Text style={styles.sectionMeta}>{discoveryCity ?? (hasJournalBasedRecommendations ? "Journal-based" : "Discovery")}</Text>
           </View>
           <Text style={styles.sectionDescription}>
             {hasJournalBasedRecommendations
@@ -171,7 +178,9 @@ export default function HomeScreen() {
               : "Upcoming events from Discovery. Log attended genres or highly rated places to shape future picks."}
           </Text>
 
-          {eventLoadError ? (
+          {loading ? (
+            <ActivityIndicator color={colors.primary} style={styles.inlineLoader} />
+          ) : eventLoadError || locationError ? (
             <Text style={styles.inlineMessage}>Recommendations are unavailable while Discovery cannot be reached.</Text>
           ) : recommendations.length > 0 ? (
             <ScrollView
