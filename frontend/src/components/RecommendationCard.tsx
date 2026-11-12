@@ -1,4 +1,5 @@
 import { StyleSheet, Text, View } from "react-native";
+import { Pressable } from "react-native";
 
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
@@ -7,20 +8,30 @@ type RecommendationCardProps = {
   title: string;
   subtitle: string;
   tag: string;
+  onPress?: () => void;
 };
 
 export default function RecommendationCard({
   title,
   subtitle,
   tag,
+  onPress,
 }: RecommendationCardProps) {
-  return (
+  const content = (
     <View style={styles.card}>
       <View style={styles.accentRule} />
       <Text style={styles.tag}>{tag}</Text>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.subtitle}>{subtitle}</Text>
     </View>
+  );
+
+  if (!onPress) return content;
+
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => pressed && styles.pressed} accessibilityRole="button" accessibilityLabel={`${title}, ${subtitle}`}>
+      {content}
+    </Pressable>
   );
 }
 
@@ -33,6 +44,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     padding: spacing.lg,
     marginRight: spacing.md,
+  },
+  pressed: {
+    opacity: 0.82,
   },
   accentRule: {
     width: 28,

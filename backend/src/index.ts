@@ -1,62 +1,79 @@
+import "dotenv/config";
+
 import cors from "cors";
-import dotenv from "dotenv";
-import express, { Request, Response } from "express";
+import express, { type ErrorRequestHandler, type Response } from "express";
 
 import { events, venues } from "./data/mockData.js";
 import { getStats } from "./services/stats.js";
-import { EventEntry } from "./types/index.js";
-
-dotenv.config();
+import { getTicketmasterEvent, parseTicketmasterQuery, searchTicketmasterEvents, TicketmasterError, TicketmasterQueryError } from "./services/ticketmaster.js";
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
 
-app.use(cors());
+app.use(cors({ exposedHeaders: ["X-Page", "X-Total-Pages", "X-Total-Elements"] }));
 app.use(express.json());
 
 app.get("/api/health", (_req, res: Response) => {
   res.json({ status: "ok", service: "raveorb-backend" });
 });
 
-app.get("/api/events", (_req, res: Response) => {
-  res.json(events);
+app.get("/api/events", async (req, res: Response) => {
+  try {
+    const page = await searchTicketmasterEvents(parseTicketmasterQuery(req.query));
+    res.setHeader("X-Page", String(page.page));
+    res.setHeader("X-Total-Pages", String(page.totalPages));
+    res.setHeader("X-Total-Elements", String(page.totalElements));
+    return res.json(page.events);
+  } catch (error) {
+    return sendEventError(error, res);
+  }
+});
+
+app.get("/api/events/:id", async (req, res: Response) => {
+  try {
+    const event = await getTicketmasterEvent(req.params.id);
+    if (!event) return res.status(404).json({ error: "Event not found" });
+    return res.json(event);
+  } catch (error) {
+    return sendEventError(error, res);
+  }
 });
 
 app.get("/api/venues", (_req, res: Response) => {
   res.json(venues);
 });
 
+app.get("/api/venues/:id", (req, res: Response) => {
+  const venue = venues.find((item) => item.id === req.params.id);
+  if (!venue) return res.status(404).json({ error: "Venue not found" });
+  return res.json(venue);
+});
+
 app.get("/api/stats", (_req, res: Response) => {
   res.json(getStats(events));
 });
 
-app.post("/api/events", (req: Request, res: Response) => {
-  const body = req.body as Partial<EventEntry>;
-
-  if (!body.title || !body.type || !body.city || !body.date) {
-    return res.status(400).json({ error: "Missing required fields" });
-  }
-
-  const nextEvent: EventEntry = {
-    id: `evt-${Date.now()}`,
-    title: body.title,
-    type: body.type,
-    venueId: body.venueId ?? "ven-temp",
-    city: body.city,
-    date: body.date,
-    startTime: body.startTime ?? "22:00",
-    endTime: body.endTime ?? "03:00",
-    artists: body.artists ?? [],
-    spend: Number(body.spend ?? 0),
-    vibeScore: Number(body.vibeScore ?? 0),
-    durationHours: Number(body.durationHours ?? 4),
-    notes: body.notes ?? "",
-  };
-
-  events.push(nextEvent);
-  return res.status(201).json(nextEvent);
+app.use((_req, res: Response) => {
+  res.status(404).json({ error: "Route not found" });
 });
+
+const errorHandler: ErrorRequestHandler = (error: unknown, _req, res, _next) => {
+  console.error("Unhandled API error", error);
+  res.status(500).json({ error: "Internal server error" });
+};
+
+app.use(errorHandler);
 
 app.listen(port, () => {
   console.log(`RaveOrb backend listening on http://localhost:${port}`);
 });
+
+function sendEventError(error: unknown, res: Response) {
+  if (error instanceof TicketmasterQueryError) return res.status(400).json({ error: error.message });
+  if (error instanceof TicketmasterError) {
+    console.error("Ticketmaster event request failed", { kind: error.kind, statusCode: error.statusCode, upstreamStatus: error.upstreamStatus });
+    return res.status(error.statusCode).json({ error: error.message });
+  }
+  console.error("Ticketmaster event request failed", { kind: "internal" });
+  return res.status(500).json({ error: "Event search is temporarily unavailable." });
+}

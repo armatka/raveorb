@@ -2,9 +2,11 @@ import { router, useLocalSearchParams } from "expo-router";
 
 import { NightForm } from "../components/NightForm";
 import { nightsStorage } from "../lib/nightsStorage";
+import { formatCalendarDate } from "../lib/calendarDate";
 import type { NightInput } from "../types/Night";
 
 type AddNightParams = {
+  sourceEventId?: string;
   eventName?: string;
   date?: string;
   venueName?: string;
@@ -16,8 +18,9 @@ export default function AddNightScreen() {
   const params = useLocalSearchParams<AddNightParams>();
 
   const initialValues: Partial<NightInput> = {
+    sourceEventId: params.sourceEventId,
     eventName: params.eventName ?? "",
-    date: params.date ?? new Date().toISOString().slice(0, 10),
+    date: params.date ?? formatCalendarDate(new Date()),
     venueName: params.venueName ?? "",
     city: params.city ?? "",
     artistsSeen: params.artists
@@ -33,14 +36,9 @@ export default function AddNightScreen() {
   };
 
   const saveNight = async (input: NightInput) => {
-    const existingNights = await nightsStorage.list();
-
-    const existing = existingNights.find(
-      (night) =>
-        night.eventName.toLowerCase() === input.eventName.toLowerCase()
-        && night.date === input.date
-        && night.venueName.toLowerCase() === input.venueName.toLowerCase(),
-    );
+    const existing = input.sourceEventId
+      ? await nightsStorage.getBySourceEventId(input.sourceEventId)
+      : null;
 
     if (existing) {
       router.replace({

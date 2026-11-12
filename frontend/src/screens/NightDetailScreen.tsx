@@ -2,13 +2,17 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { EmptyState } from "../components/EmptyState";
+import { ArtistLinks } from "../components/ArtistLinks";
+import { FriendLinks } from "../components/FriendLinks";
 import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { nightsStorage } from "../lib/nightsStorage";
 import { formatCurrency } from "../lib/formatCurrency";
+import { goBackOrReplace } from "../lib/navigation";
+import { showAlert } from "../lib/showAlert";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
 import type { Night } from "../types/Night";
@@ -25,6 +29,7 @@ export default function NightDetailScreen() {
   const [night, setNight] = useState<Night | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -42,20 +47,25 @@ export default function NightDetailScreen() {
           if (isCurrent) setLoading(false);
         });
       return () => { isCurrent = false; };
-    }, [id]),
+    }, [id, retryToken]),
   );
 
   const confirmDelete = () => {
+    const deleteNight = () => {
+      nightsStorage.remove(id)
+        .then(() => router.replace("/(tabs)/nights"))
+        .catch(() => showAlert("Could not delete", "Please try again."));
+    };
+    if (Platform.OS === "web") {
+      if (globalThis.confirm("Delete this night? This journal entry will be permanently removed from this device.")) deleteNight();
+      return;
+    }
     Alert.alert("Delete this night?", "This journal entry will be permanently removed from this device.", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
         style: "destructive",
-        onPress: () => {
-          nightsStorage.remove(id)
-            .then(() => router.replace("/(tabs)/nights"))
-            .catch(() => Alert.alert("Could not delete", "Please try again."));
-        },
+        onPress: deleteNight,
       },
     ]);
   };
@@ -72,8 +82,8 @@ export default function NightDetailScreen() {
   if (error || !night) {
     return (
       <Screen edges={["left", "right", "bottom"]}>
-        <ScreenHeader onBack={() => router.back()} />
-        <EmptyState title={error ? "Journal unavailable" : "Night not found"} message={error ? "This entry could not be loaded. Try again." : "This entry may have been deleted."} icon="alert-circle-outline" />
+        <ScreenHeader onBack={() => goBackOrReplace("/(tabs)/nights")} />
+        <EmptyState title={error ? "Journal unavailable" : "Night not found"} message={error ? "This entry could not be loaded. Try again." : "This entry may have been deleted."} icon="alert-circle-outline" action={error ? <Pressable onPress={() => setRetryToken((token) => token + 1)} style={styles.retryButton} accessibilityRole="button" accessibilityLabel="Retry loading night"><Text style={styles.retryText}>Retry</Text></Pressable> : undefined} />
       </Screen>
     );
   }
@@ -81,7 +91,7 @@ export default function NightDetailScreen() {
   return (
     <Screen edges={["left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
       <ScreenHeader
-        onBack={() => router.back()}
+        onBack={() => goBackOrReplace("/(tabs)/nights")}
         actions={[
           { icon: "pencil-outline", label: "Edit", onPress: () => router.push({ pathname: "/night/[id]/edit", params: { id } }) },
           { icon: "trash-outline", label: "Delete", onPress: confirmDelete, destructive: true },
@@ -117,8 +127,8 @@ export default function NightDetailScreen() {
         </View>
       </View>
 
-      {night.artistsSeen.length > 0 ? <DetailSection title="Artists" values={night.artistsSeen} /> : null}
-      {night.friends.length > 0 ? <DetailSection title="With" values={night.friends} /> : null}
+      {night.artistsSeen.length > 0 ? <View style={styles.section}><Text style={styles.sectionLabel}>ARTISTS</Text><ArtistLinks names={night.artistsSeen} /></View> : null}
+      {night.friends.length > 0 ? <View style={styles.section}><Text style={styles.sectionLabel}>WITH</Text><FriendLinks names={night.friends} /></View> : null}
       {night.favoriteMoment ? (
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>FAVORITE MOMENT</Text>
@@ -146,27 +156,9 @@ export default function NightDetailScreen() {
   );
 }
 
-type DetailSectionProps = {
-  title: string;
-  values: string[];
-};
-
-function DetailSection({ title, values }: DetailSectionProps) {
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionLabel}>{title.toUpperCase()}</Text>
-      <View style={styles.tagRow}>
-        {values.map((value) => (
-          <View key={value} style={styles.tag}>
-            <Text style={styles.tagText}>{value}</Text>
-          </View>
-        ))}
-      </View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
+  retryButton: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.lg, borderRadius: 8, backgroundColor: colors.primary },
+  retryText: { color: colors.background, fontWeight: "700" },
   content: {
     width: "100%",
     maxWidth: 800,

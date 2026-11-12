@@ -5,6 +5,11 @@ export type EventStatus = "interested" | "going" | "attended";
 type EventStatusMap = Record<string, EventStatus>;
 
 const STORAGE_KEY = "raveorb.event-statuses.v1";
+let writeQueue: Promise<void> = Promise.resolve();
+
+function isEventStatus(value: unknown): value is EventStatus {
+  return value === "interested" || value === "going" || value === "attended";
+}
 
 async function readAll(): Promise<EventStatusMap> {
   const stored = await AsyncStorage.getItem(STORAGE_KEY);
@@ -13,40 +18,52 @@ async function readAll(): Promise<EventStatusMap> {
     return {};
   }
 
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(stored);
-
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {};
-    }
-
-    return parsed as EventStatusMap;
+    parsed = JSON.parse(stored);
   } catch {
-    return {};
+    throw new Error("Event statuses could not be read.");
   }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
+    || !Object.values(parsed).every(isEventStatus)) {
+    throw new Error("Event statuses contain unsupported records.");
+  }
+  return parsed as EventStatusMap;
 }
 
-async function writeAll(statuses: EventStatusMap): Promise<void> {
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(statuses));
+function updateAll(update: (statuses: EventStatusMap) => EventStatusMap): Promise<void> {
+  const write = writeQueue.then(async () => {
+    const statuses = await readAll();
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(update(statuses)));
+  });
+  writeQueue = write.catch(() => undefined);
+  return write;
 }
 
 export const eventStatusStorage = {
+  async list(): Promise<EventStatusMap> {
+    return readAll();
+  },
+
   async get(eventId: string): Promise<EventStatus | null> {
     const statuses = await readAll();
     return statuses[eventId] ?? null;
   },
 
-  async set(eventId: string, status: EventStatus): Promise<void> {
-    const statuses = await readAll();
-    await writeAll({
-      ...statuses,
-      [eventId]: status,
+  async set(eventId: string, status: EventStatus | null): Promise<void> {
+    await updateAll((statuses) => {
+      if (status === null) {
+        const { [eventId]: _removed, ...remaining } = statuses;
+        return remaining;
+      }
+      return { ...statuses, [eventId]: status };
     });
   },
 
   async remove(eventId: string): Promise<void> {
-    const statuses = await readAll();
-    delete statuses[eventId];
-    await writeAll(statuses);
+    await updateAll((statuses) => {
+      const { [eventId]: _removed, ...remaining } = statuses;
+      return remaining;
+    });
   },
 };

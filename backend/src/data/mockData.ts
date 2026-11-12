@@ -1,76 +1,46 @@
-import { EventEntry, Venue } from "../types/index.js";
+import type { EventEntry, Venue } from "../types/index.js";
+import { mockEventDates } from "./mockEventDates.js";
+
+type EventSeed = Omit<EventEntry, "date" | "source" | "sourceEventId"> & {
+  date: string;
+};
+
+function makeEvent(event: EventSeed): EventEntry {
+  return {
+    ...event,
+    source: "raveorb-mock",
+    sourceEventId: event.id,
+  };
+}
 
 export const events: EventEntry[] = [
-  {
-    id: "evt-001",
-    title: "Sunset Ritual",
-    type: "festival",
-    venueId: "ven-001",
-    city: "Miami",
-    date: "2026-03-14",
-    startTime: "19:00",
-    endTime: "04:00",
-    artists: ["KAYO", "Nova Bloom", "Astra Vale"],
-    spend: 128,
-    vibeScore: 94,
-    durationHours: 9,
-    notes: "High-energy set, perfect lighting, great crowd flow.",
-  },
-  {
-    id: "evt-002",
-    title: "Afterglow Sessions",
-    type: "club",
-    venueId: "ven-002",
-    city: "Chicago",
-    date: "2026-02-07",
-    startTime: "22:30",
-    endTime: "03:00",
-    artists: ["Mira Lane", "DJ Kilo"],
-    spend: 82,
-    vibeScore: 88,
-    durationHours: 4.5,
-    notes: "Tight room, warm mix, strong late-night energy.",
-  },
-  {
-    id: "evt-003",
-    title: "Neon District",
-    type: "rave",
-    venueId: "ven-003",
-    city: "Austin",
-    date: "2026-01-20",
-    startTime: "20:00",
-    endTime: "05:00",
-    artists: ["Zero Hour", "Pulse Theory"],
-    spend: 146,
-    vibeScore: 91,
-    durationHours: 9,
-    notes: "Crowd was locked in all night and the visuals were elite.",
-  },
+  makeEvent({ id: "mock-toronto-001", title: "Northline: After Hours", type: "club", venueId: "ven-toronto-northline", venueName: "Northline Assembly", city: "Toronto", countryCode: "CA", date: mockEventDates.tonight, startTime: "22:00", endTime: "03:00", timezone: "America/Toronto", artists: ["Mara Voss", "Relay State"], genres: ["techno", "tech house"], description: "Synthetic development listing for a close-room techno session with a long-form closing set. This event is fictional and not for sale.", priceMin: 24, priceMax: 38, currency: "CAD", ageRestriction: "19+", status: "scheduled" }),
+  makeEvent({ id: "mock-toronto-002", title: "Glass Current: Warehouse Signal", type: "rave", venueId: "ven-toronto-glass", venueName: "Glass Current Hall", city: "Toronto", countryCode: "CA", date: mockEventDates.thisWeekend, startTime: "21:30", endTime: "05:00", timezone: "America/Toronto", artists: ["Kestrel Unit", "Sable Phase", "Mira Circuit"], genres: ["hard techno", "techno"], description: "Fictional warehouse-night sample featuring fast industrial rhythms, modular visuals, and a late closing slot.", priceMin: 32, priceMax: 52, currency: "CAD", ageRestriction: "19+", status: "scheduled" }),
+  makeEvent({ id: "mock-toronto-003", title: "Amber Room: Sunday Frequency", type: "club", venueId: "ven-toronto-amber", venueName: "Amber Room Social", city: "Toronto", countryCode: "CA", date: mockEventDates.laterThisMonth, startTime: "20:00", endTime: "01:00", timezone: "America/Toronto", artists: ["Nia Sol", "Tandem Bloom"], genres: ["house", "afro house"], description: "Fictional development event built around warm percussion, open-format house, and an early-weekend dance floor.", priceMin: 18, priceMax: 30, currency: "CAD", ageRestriction: "19+", status: "scheduled" }),
+  makeEvent({ id: "mock-ottawa-001", title: "Capital Pulse: Night Shift", type: "concert", venueId: "ven-ottawa-pulse", venueName: "Meridian Foundry", city: "Ottawa", countryCode: "CA", date: mockEventDates.inDays(5), startTime: "20:30", endTime: "02:00", timezone: "America/Toronto", artists: ["Orin Vale", "Static Garden"], genres: ["melodic techno", "techno"], description: "Fictional live electronic showcase with evolving melodic builds and a compact headline performance.", priceMin: 22, priceMax: 36, currency: "CAD", ageRestriction: "18+", status: "scheduled" }),
+  makeEvent({ id: "mock-ottawa-002", title: "Low Orbit: Breakline", type: "rave", venueId: "ven-ottawa-orbit", venueName: "Low Orbit Rooms", city: "Ottawa", countryCode: "CA", date: mockEventDates.inDays(43), startTime: "22:00", endTime: "04:30", timezone: "America/Toronto", artists: ["Tessellate", "Dax Meridian"], genres: ["drum and bass", "techno"], description: "Fictional club-night sample pairing rolling drum and bass with a separate late techno room.", priceMin: 27, priceMax: 42, currency: "CAD", ageRestriction: "18+", status: "scheduled" }),
+  makeEvent({ id: "mock-montreal-001", title: "Nocturne: Chrome Bloom", type: "festival", venueId: "ven-montreal-nocturne", venueName: "Atelier Nocturne", city: "Montreal", countryCode: "CA", date: mockEventDates.inDays(9), startTime: "19:00", endTime: "03:00", timezone: "America/Toronto", artists: ["Lune Vector", "Ari Serein", "Phase Violet"], genres: ["trance", "melodic techno"], description: "Fictional indoor electronic showcase with progressive transitions, layered synth work, and multiple rooms.", priceMin: 35, priceMax: 58, currency: "CAD", ageRestriction: "18+", status: "scheduled" }),
+  makeEvent({ id: "mock-montreal-002", title: "Velours Signal: Deep Current", type: "club", venueId: "ven-montreal-velours", venueName: "Velours Signal Club", city: "Montreal", countryCode: "CA", date: mockEventDates.inDays(65), startTime: "22:30", endTime: "03:30", timezone: "America/Toronto", artists: ["Milo Serein", "Dune Assembly"], genres: ["house", "tech house"], description: "Fictional late-night club listing with patient house selections and a guest back-to-back set.", priceMin: 20, priceMax: 34, currency: "CAD", ageRestriction: "18+", status: "scheduled" }),
+  makeEvent({ id: "mock-new-york-001", title: "Signal Atlas: Redline", type: "rave", venueId: "ven-ny-signal", venueName: "Signal Atlas Loft", city: "New York", countryCode: "US", date: mockEventDates.inDays(12), startTime: "22:00", endTime: "05:00", timezone: "America/New_York", artists: ["Iris Kade", "Monochrome Youth"], genres: ["hard techno", "techno"], description: "Fictional New York warehouse-style event sample with a high-BPM headline set and extended support.", priceMin: 38, priceMax: 64, currency: "USD", ageRestriction: "21+", status: "scheduled" }),
+  makeEvent({ id: "mock-new-york-002", title: "Soft Focus: Blue Hour", type: "concert", venueId: "ven-ny-soft-focus", venueName: "Soft Focus Hall", city: "New York", countryCode: "US", date: mockEventDates.inDays(78), startTime: "19:30", endTime: "23:30", timezone: "America/New_York", artists: ["Celia North", "Juniper Arc"], genres: ["trance", "melodic techno"], description: "Fictional live electronic performance focused on melodic storytelling, spacious production, and detailed visuals.", priceMin: 42, priceMax: 72, currency: "USD", ageRestriction: "18+", status: "scheduled" }),
+  makeEvent({ id: "mock-miami-001", title: "Palm Circuit: Open Frequency", type: "festival", venueId: "ven-miami-palm", venueName: "Palm Circuit Grounds", city: "Miami", countryCode: "US", date: mockEventDates.inDays(18), startTime: "17:00", endTime: "02:00", timezone: "America/New_York", artists: ["Solena Mar", "Rico Tide", "Asha Current"], genres: ["afro house", "house"], description: "Fictional outdoor festival sample with sunset-focused programming and a synthetic local artist lineup.", priceMin: 48, priceMax: 90, currency: "USD", ageRestriction: "18+", status: "scheduled" }),
+  makeEvent({ id: "mock-miami-002", title: "Deep Meridian: Night Swim", type: "club", venueId: "ven-miami-meridian", venueName: "Deep Meridian Room", city: "Miami", countryCode: "US", date: mockEventDates.inDays(105), startTime: "21:00", endTime: "04:00", timezone: "America/New_York", artists: ["Aven Sol", "Lio Maren"], genres: ["tech house", "house"], description: "Fictional club event with a deep, percussive opening and a synthetic extended closing set.", priceMin: 30, priceMax: 55, currency: "USD", ageRestriction: "21+", status: "scheduled" }),
+  makeEvent({ id: "mock-amsterdam-001", title: "Canal Phase: Signal Bloom", type: "festival", venueId: "ven-amsterdam-canal", venueName: "Canal Phase Hall", city: "Amsterdam", countryCode: "NL", date: mockEventDates.inDays(24), startTime: "20:00", endTime: "05:00", timezone: "Europe/Amsterdam", artists: ["Edda Form", "Niko Lattice", "Sora Current"], genres: ["techno", "trance"], description: "Fictional multi-room electronic event sample with a progressive main room and a late-night techno floor.", priceMin: 36, priceMax: 68, currency: "EUR", ageRestriction: "18+", status: "scheduled" }),
+  makeEvent({ id: "mock-amsterdam-002", title: "Lowland Motion: Bass Architecture", type: "rave", venueId: "ven-amsterdam-lowland", venueName: "Lowland Motion Depot", city: "Amsterdam", countryCode: "NL", date: mockEventDates.inDays(135), startTime: "21:00", endTime: "06:00", timezone: "Europe/Amsterdam", artists: ["Vector Orchard", "Mira Flux", "Northbound Echo"], genres: ["drum and bass", "hard techno"], description: "Fictional late-season warehouse gathering with separate bass and high-tempo electronic programs.", priceMin: 40, priceMax: 75, currency: "EUR", ageRestriction: "18+", status: "scheduled" }),
 ];
 
 export const venues: Venue[] = [
-  {
-    id: "ven-001",
-    name: "Solar Shore",
-    city: "Miami",
-    type: "festival grounds",
-    visits: 4,
-    favoriteGenre: "house",
-  },
-  {
-    id: "ven-002",
-    name: "Velvet Cellar",
-    city: "Chicago",
-    type: "club",
-    visits: 6,
-    favoriteGenre: "tech house",
-  },
-  {
-    id: "ven-003",
-    name: "Circuit Hall",
-    city: "Austin",
-    type: "warehouse",
-    visits: 5,
-    favoriteGenre: "electro",
-  },
+  { id: "ven-toronto-northline", name: "Northline Assembly", city: "Toronto", countryCode: "CA", type: "club", visits: 0, favoriteGenre: "techno" },
+  { id: "ven-toronto-glass", name: "Glass Current Hall", city: "Toronto", countryCode: "CA", type: "warehouse", visits: 0, favoriteGenre: "hard techno" },
+  { id: "ven-toronto-amber", name: "Amber Room Social", city: "Toronto", countryCode: "CA", type: "club", visits: 0, favoriteGenre: "afro house" },
+  { id: "ven-ottawa-pulse", name: "Meridian Foundry", city: "Ottawa", countryCode: "CA", type: "live venue", visits: 0, favoriteGenre: "melodic techno" },
+  { id: "ven-ottawa-orbit", name: "Low Orbit Rooms", city: "Ottawa", countryCode: "CA", type: "club", visits: 0, favoriteGenre: "drum and bass" },
+  { id: "ven-montreal-nocturne", name: "Atelier Nocturne", city: "Montreal", countryCode: "CA", type: "festival hall", visits: 0, favoriteGenre: "trance" },
+  { id: "ven-montreal-velours", name: "Velours Signal Club", city: "Montreal", countryCode: "CA", type: "club", visits: 0, favoriteGenre: "house" },
+  { id: "ven-ny-signal", name: "Signal Atlas Loft", city: "New York", countryCode: "US", type: "warehouse", visits: 0, favoriteGenre: "hard techno" },
+  { id: "ven-ny-soft-focus", name: "Soft Focus Hall", city: "New York", countryCode: "US", type: "live venue", visits: 0, favoriteGenre: "trance" },
+  { id: "ven-miami-palm", name: "Palm Circuit Grounds", city: "Miami", countryCode: "US", type: "festival grounds", visits: 0, favoriteGenre: "afro house" },
+  { id: "ven-miami-meridian", name: "Deep Meridian Room", city: "Miami", countryCode: "US", type: "club", visits: 0, favoriteGenre: "tech house" },
+  { id: "ven-amsterdam-canal", name: "Canal Phase Hall", city: "Amsterdam", countryCode: "NL", type: "festival hall", visits: 0, favoriteGenre: "techno" },
+  { id: "ven-amsterdam-lowland", name: "Lowland Motion Depot", city: "Amsterdam", countryCode: "NL", type: "warehouse", visits: 0, favoriteGenre: "drum and bass" },
 ];

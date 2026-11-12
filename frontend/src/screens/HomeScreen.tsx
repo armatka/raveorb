@@ -1,33 +1,90 @@
 import { LinearGradient } from "expo-linear-gradient";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image } from "expo-image";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useMemo, useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
+import { Ionicons } from "@expo/vector-icons";
 import Logo from "../components/Logo";
 import MetricCard from "../components/MetricCard";
 import RecommendationCard from "../components/RecommendationCard";
 import { Screen } from "../components/Screen";
+import { formatEventSchedule } from "../lib/eventFormatting";
+import { eventStatusStorage, type EventStatus } from "../lib/eventStatusStorage";
+import { getHomeRecommendations } from "../lib/homeRecommendations";
+import { calculateNightStats } from "../lib/nightStats";
+import { nightsStorage } from "../lib/nightsStorage";
+import { preferencesStorage } from "../lib/preferencesStorage";
+import { eventsRepository } from "../services/eventsRepository";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
-
-const stats = [
-  { title: "Nights", value: "24", caption: "this year" },
-  { title: "Avg vibe", value: "92", caption: "out of 100" },
-  { title: "Cities", value: "7", caption: "explored" },
-  { title: "Top venue", value: "Solar Shore", caption: "favorite spot" },
-];
-
-const upcoming = [
-  { title: "Neon District", time: "Fri · 11:30 PM", vibe: "Peak energy" },
-  { title: "Sunset Ritual", time: "Sat · 8:00 PM", vibe: "Open air" },
-  { title: "Velvet Echo", time: "Sun · 10:15 PM", vibe: "Deep house" },
-];
-
-const recommendations = [
-  { title: "Afterglow", subtitle: "Tech house and open-air energy", tag: "Tonight" },
-  { title: "Neon Pulse", subtitle: "Warehouse night with peak visuals", tag: "Trending" },
-  { title: "Solar Drift", subtitle: "Sunset rave and live sets", tag: "For you" },
-];
+import type { Night } from "../types/Night";
+import type { EventEntry } from "../types/event";
 
 export default function HomeScreen() {
+  const [nights, setNights] = useState<Night[]>([]);
+  const [statuses, setStatuses] = useState<Record<string, EventStatus>>({});
+  const [events, setEvents] = useState<EventEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [eventLoadError, setEventLoadError] = useState<string | null>(null);
+  const [discoveryCity, setDiscoveryCity] = useState<string | null>(null);
+  const [locationError, setLocationError] = useState(false);
+  const [now, setNow] = useState(() => new Date());
+  const [retryToken, setRetryToken] = useState(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      let isCurrent = true;
+      setLoading(true);
+      setLoadError(false);
+      setNow(new Date());
+      Promise.allSettled([nightsStorage.list(), eventStatusStorage.list(), eventsRepository.listEvents(), preferencesStorage.get()])
+        .then(([nightResult, statusResult, eventResult, preferenceResult]) => {
+          if (!isCurrent) return;
+          if (nightResult.status === "fulfilled") {
+            setNights(nightResult.value);
+            setLoadError(false);
+          } else {
+            setLoadError(true);
+          }
+          if (statusResult.status === "fulfilled") setStatuses(statusResult.value);
+          if (eventResult.status === "fulfilled") {
+            setEvents(eventResult.value);
+            setEventLoadError(null);
+          } else {
+            setEventLoadError(eventResult.reason instanceof Error ? eventResult.reason.message : "Could not load events.");
+          }
+          if (preferenceResult.status === "fulfilled") setDiscoveryCity(preferenceResult.value.discoveryCityConfigured ? preferenceResult.value.discoveryCity : "Toronto");
+          setLocationError(preferenceResult.status === "rejected");
+        })
+        .finally(() => {
+          if (isCurrent) setLoading(false);
+        });
+      return () => { isCurrent = false; };
+    }, [retryToken]),
+  );
+
+  const currentYear = String(now.getFullYear());
+  const allTimePulse = useMemo(() => calculateNightStats(nights, null, now), [nights, now]);
+  const yearPulse = useMemo(() => calculateNightStats(nights, currentYear, now), [currentYear, nights, now]);
+  const recommendations = useMemo(() => getHomeRecommendations(nights, events, statuses, now, 3, discoveryCity), [discoveryCity, events, nights, now, statuses]);
+  const hasJournalBasedRecommendations = recommendations.some((item) => item.reason !== "Upcoming event in Discovery");
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const nextEvent = useMemo(() => {
+    const futureEvents = events
+      .filter((event) => event.date >= todayKey && (!discoveryCity || event.city.toLocaleLowerCase() === discoveryCity.toLocaleLowerCase()))
+      .sort((first, second) => first.date.localeCompare(second.date) || first.startTime.localeCompare(second.startTime));
+    const goingEvent = futureEvents.find((event) => statuses[event.id] === "going");
+    if (goingEvent) return { event: goingEvent, status: "going" as const };
+    const interestedEvent = futureEvents.find((event) => statuses[event.id] === "interested");
+    return interestedEvent ? { event: interestedEvent, status: "interested" as const } : null;
+  }, [discoveryCity, events, statuses, todayKey]);
+  const recentNights = useMemo(
+    () => [...nights].sort((first, second) => second.date.localeCompare(first.date)).slice(0, 3),
+    [nights],
+  );
+
   return (
     <Screen edges={["top", "left", "right"]} style={styles.safeArea}>
       <LinearGradient
@@ -41,103 +98,140 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.headerWrap}>
-            <Logo size={300} background="dark" style={styles.heroLogo} />
-            <Text style={styles.brandTag}>Nightlife Journal</Text>
+            <Logo size={230} background="dark" style={styles.heroLogo} />
+            <Text style={styles.brandTag}>Discover the scene. Capture the experience.</Text>
           </View>
 
           <View style={styles.welcomeCard}>
-            <Text style={styles.kicker}>Curated for nights worth remembering</Text>
-            <Text style={styles.headline}>Discover Your Sound</Text>
+            <Text style={styles.kicker}>Your scene, your history</Text>
+            <Text style={styles.headline}>Find the night. Keep the memory.</Text>
             <Text style={styles.supportingText}>
-              Personalized festival, rave, and music discovery built around your favorite nights,
-              your best venues, and your signature energy.
+              Explore electronic music events, then build a personal timeline of the artists,
+              venues, friends, and moments that made each night yours.
             </Text>
+          </View>
 
-            <View style={styles.featureRow}>
-              <View style={styles.featurePill}>
-                <Text style={styles.featureText}>Festivals</Text>
-              </View>
-              <View style={styles.featurePill}>
-                <Text style={styles.featureText}>Raves</Text>
-              </View>
-              <View style={styles.featurePill}>
-                <Text style={styles.featureText}>Concerts</Text>
-              </View>
-            </View>
+          <View style={styles.quickActions}>
+            <QuickAction icon="compass-outline" label="Discover events" onPress={() => router.push("/(tabs)/events")} />
+            <QuickAction icon="add" label="Add a Night" onPress={() => router.push("/night/new")} />
+            <QuickAction icon="book-outline" label="My Nights" onPress={() => router.push("/(tabs)/nights")} />
           </View>
 
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Your pulse</Text>
-            <Text style={styles.sectionMeta}>This season</Text>
+            <Pressable onPress={() => router.push("/my-raveorb")} style={styles.profileLink} accessibilityRole="button" accessibilityLabel="Open My RaveOrb"><Text style={styles.sectionMeta}>My RaveOrb</Text><Ionicons name="chevron-forward" size={16} color={colors.secondary} /></Pressable>
           </View>
 
-          <View style={styles.statsGrid}>
-            {stats.map((stat) => (
-              <MetricCard
-                key={stat.title}
-                title={stat.title}
-                value={stat.value}
-                caption={stat.caption}
-              />
-            ))}
-          </View>
+          {loading ? (
+            <ActivityIndicator color={colors.primary} style={styles.inlineLoader} />
+          ) : loadError ? (
+            <Text style={styles.inlineMessage}>Your journal stats are temporarily unavailable.</Text>
+          ) : (
+            <View style={styles.statsGrid}>
+              <MetricCard title="Nights this year" value={String(yearPulse.totalNights)} caption={yearPulse.totalNights === 1 ? "experience logged" : "experiences logged"} />
+              <MetricCard title="Average rating" value={allTimePulse.ratedNightCount ? `${allTimePulse.averageRating.toFixed(1)}/5` : "Not yet"} caption={allTimePulse.ratedNightCount ? `${allTimePulse.ratedNightCount} rated nights · all time` : "rate a night to begin"} />
+              <MetricCard title="Cities explored" value={String(allTimePulse.uniqueCities)} caption="in your journal" />
+              <MetricCard title="Top venue" value={allTimePulse.mostVisitedVenue?.label ?? "Not yet"} caption={allTimePulse.mostVisitedVenue ? `${allTimePulse.mostVisitedVenue.value} visits · all time` : "log a night to begin"} />
+            </View>
+          )}
 
           <View style={styles.discoveryCard}>
             <Text style={styles.discoveryTitle}>Next up</Text>
-            <Text style={styles.discoveryHeadline}>Your perfect night is waiting</Text>
-            <Text style={styles.discoveryCopy}>
-              Based on your energy, genre mix, and recent venue visits, we found a strong match for tonight.
-            </Text>
-
-            <View style={styles.discoveryRow}>
-              <View style={styles.discoveryTag}>
-                <Text style={styles.discoveryTagText}>Tech House</Text>
+            {loading ? (
+              <ActivityIndicator color={colors.primary} style={styles.inlineLoader} />
+            ) : eventLoadError || locationError ? (
+              <View style={styles.nextEvent}>
+                <Text style={styles.discoveryCopy}>{eventLoadError ?? "Your discovery location could not be loaded."}</Text>
+                <Pressable onPress={() => setRetryToken((token) => token + 1)} style={styles.discoveryButton} accessibilityRole="button">
+                  <Text style={styles.discoveryButtonText}>Retry</Text>
+                  <Ionicons name="refresh" size={17} color={colors.background} />
+                </Pressable>
               </View>
-              <View style={styles.discoveryTag}>
-                <Text style={styles.discoveryTagText}>Warehouse</Text>
-              </View>
-              <View style={styles.discoveryTag}>
-                <Text style={styles.discoveryTagText}>Late Night</Text>
-              </View>
-            </View>
+            ) : nextEvent ? (
+              <Pressable onPress={() => router.push({ pathname: "/event/[id]", params: { id: nextEvent.event.id } })} style={({ pressed }) => [styles.nextEvent, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`Open ${nextEvent.event.title}, marked ${nextEvent.status}`}>
+                <View style={styles.eventMetaRow}>
+                  <Text style={styles.discoveryHeadline} numberOfLines={2}>{nextEvent.event.title}</Text>
+                  <Text style={styles.eventVibe}>{nextEvent.status === "going" ? "GOING" : "INTERESTED"}</Text>
+                </View>
+                <Text style={styles.eventLocation}>{nextEvent.event.venueName} · {nextEvent.event.city}</Text>
+                <Text style={styles.discoveryCopy}>{formatEventSchedule(nextEvent.event)}</Text>
+              </Pressable>
+            ) : (
+              <>
+                <Text style={styles.discoveryHeadline}>Your next night is out there</Text>
+                <Text style={styles.discoveryCopy}>Mark an event Interested or Going to keep it close at hand.</Text>
+                <Pressable onPress={() => router.push("/(tabs)/events")} style={({ pressed }) => [styles.discoveryButton, pressed && styles.pressed]} accessibilityRole="button">
+                  <Text style={styles.discoveryButtonText}>Explore events</Text>
+                  <Ionicons name="arrow-forward" size={17} color={colors.background} />
+                </Pressable>
+              </>
+            )}
           </View>
 
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>For you</Text>
-            <Text style={styles.sectionMeta}>Based on your vibe</Text>
+            <Text style={styles.sectionMeta}>{discoveryCity ?? (hasJournalBasedRecommendations ? "Journal-based" : "Discovery")}</Text>
           </View>
+          <Text style={styles.sectionDescription}>
+            {hasJournalBasedRecommendations
+              ? "Selected from genres and places in your journal history."
+              : "Upcoming events from Discovery. Log attended genres or highly rated places to shape future picks."}
+          </Text>
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.recommendationRow}
-            style={styles.recommendationScroll}
-          >
-            {recommendations.map((item) => (
+          {loading ? (
+            <ActivityIndicator color={colors.primary} style={styles.inlineLoader} />
+          ) : eventLoadError || locationError ? (
+            <Text style={styles.inlineMessage}>Recommendations are unavailable while Discovery cannot be reached.</Text>
+          ) : recommendations.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.recommendationRow}
+              style={styles.recommendationScroll}
+            >
+            {recommendations.map(({ event, reason }) => (
               <RecommendationCard
-                key={item.title}
-                title={item.title}
-                subtitle={item.subtitle}
-                tag={item.tag}
+                key={event.id}
+                title={event.title}
+                subtitle={reason}
+                tag={event.genres.slice(0, 2).join(" · ") || event.type}
+                onPress={() => router.push({ pathname: "/event/[id]", params: { id: event.id } })}
               />
             ))}
-          </ScrollView>
+            </ScrollView>
+          ) : (
+            <Text style={styles.inlineMessage}>No upcoming events to recommend right now.</Text>
+          )}
 
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Recent nights</Text>
-            <Text style={styles.sectionMeta}>Keep the momentum</Text>
+            <Pressable onPress={() => router.push("/(tabs)/nights")} accessibilityRole="button" accessibilityLabel="View all Nights">
+              <Text style={styles.sectionMeta}>View all</Text>
+            </Pressable>
           </View>
 
           <View style={styles.listWrap}>
-            {upcoming.map((entry) => (
-              <View key={entry.title} style={styles.eventCard}>
-                <View style={styles.eventMetaRow}>
-                  <Text style={styles.eventTitle}>{entry.title}</Text>
-                  <Text style={styles.eventVibe}>{entry.vibe}</Text>
+            {loading ? (
+              <ActivityIndicator color={colors.primary} style={styles.inlineLoader} />
+            ) : loadError ? (
+              <Text style={styles.inlineMessage}>Your recent nights are temporarily unavailable.</Text>
+            ) : recentNights.length > 0 ? recentNights.map((night) => (
+              <Pressable key={night.id} onPress={() => router.push({ pathname: "/night/[id]", params: { id: night.id } })} style={({ pressed }) => [styles.eventCard, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`Open ${night.eventName}`}>
+                {night.photos[0] ? (
+                  <Image source={{ uri: night.photos[0] }} contentFit="cover" style={styles.recentThumbnail} accessibilityLabel={`${night.eventName} photo`} />
+                ) : null}
+                <View style={styles.recentContent}>
+                  <View style={styles.eventMetaRow}>
+                    <Text style={styles.eventTitle} numberOfLines={1}>{night.eventName}</Text>
+                    {night.rating > 0 ? <Text style={styles.eventVibe}>★ {night.rating}/5</Text> : null}
+                  </View>
+                  <Text style={styles.eventTime}>{night.venueName} · {night.city}</Text>
+                  <Text style={styles.eventTime}>{formatNightDate(night.date)}</Text>
                 </View>
-                <Text style={styles.eventTime}>{entry.time}</Text>
-              </View>
-            ))}
+              </Pressable>
+            )) : (
+              <Text style={styles.inlineMessage}>Your Night timeline will appear here after you log an experience.</Text>
+            )}
           </View>
         </ScrollView>
       </LinearGradient>
@@ -167,11 +261,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   brandTag: {
+    maxWidth: 320,
     fontSize: 11,
-    letterSpacing: 2.4,
-    textTransform: "uppercase",
+    letterSpacing: 1.4,
     color: colors.secondary,
     fontWeight: "700",
+    textAlign: "center",
   },
   welcomeCard: {
     paddingHorizontal: spacing.lg,
@@ -202,27 +297,28 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     marginBottom: spacing.lg,
   },
-  featureRow: {
+  quickActions: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: spacing.sm,
+    gap: spacing.sm,
+    marginTop: spacing.md,
   },
-  featurePill: {
-    backgroundColor: colors.surfaceAlt,
+  quickAction: {
+    flex: 1,
+    minHeight: 68,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.xs,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    marginRight: spacing.sm,
-    marginBottom: spacing.sm,
+    backgroundColor: colors.surface,
   },
-  featureText: {
-    color: colors.secondary,
-    fontSize: 12,
+  quickActionText: {
+    color: colors.textSecondary,
+    fontSize: 10,
     fontWeight: "700",
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
+    textAlign: "center",
   },
   sectionHeader: {
     flexDirection: "row",
@@ -276,26 +372,38 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginBottom: spacing.lg,
   },
-  discoveryRow: {
+  nextEvent: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.md,
+  },
+  eventLocation: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    marginBottom: spacing.xs,
+  },
+  discoveryButton: {
+    minHeight: 46,
     flexDirection: "row",
-    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    borderRadius: 9,
+    backgroundColor: colors.primary,
   },
-  discoveryTag: {
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    marginRight: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  discoveryTagText: {
-    color: colors.secondary,
+  discoveryButtonText: {
+    color: colors.background,
     fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 0.8,
+    fontWeight: "800",
     textTransform: "uppercase",
+    letterSpacing: 0.7,
+  },
+  sectionDescription: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: -spacing.xs,
+    marginBottom: spacing.md,
   },
   recommendationScroll: {
     marginBottom: spacing.lg,
@@ -303,17 +411,39 @@ const styles = StyleSheet.create({
   recommendationRow: {
     paddingRight: spacing.md,
   },
+  inlineLoader: {
+    marginVertical: spacing.lg,
+  },
+  inlineMessage: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 20,
+    paddingVertical: spacing.md,
+  },
   listWrap: {
     marginBottom: spacing.lg,
   },
   eventCard: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: colors.surface,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    padding: spacing.sm,
     marginBottom: spacing.md,
+  },
+  recentThumbnail: {
+    width: 68,
+    height: 68,
+    borderRadius: 8,
+    marginRight: spacing.md,
+    backgroundColor: colors.surfaceAlt,
+  },
+  recentContent: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: spacing.xs,
   },
   eventMetaRow: {
     flexDirection: "row",
@@ -336,5 +466,25 @@ const styles = StyleSheet.create({
   eventTime: {
     color: colors.muted,
     fontSize: 13,
+    marginTop: 3,
   },
+  pressed: {
+    opacity: 0.8,
+  },
+  profileLink: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: spacing.xs },
 });
+
+function QuickAction({ icon, label, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.quickAction, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={label}>
+      <Ionicons name={icon} size={19} color={colors.secondary} />
+      <Text style={styles.quickActionText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function formatNightDate(date: string): string {
+  const parsedDate = new Date(`${date}T12:00:00`);
+  if (Number.isNaN(parsedDate.getTime())) return date;
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(parsedDate);
+}

@@ -1,11 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
-import { router } from "expo-router";
 import { useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { RatingSelector } from "./RatingSelector";
+import { DateInput } from "./DateInput";
 import { Screen } from "./Screen";
 import { ScreenHeader } from "./ScreenHeader";
 import type { CurrencyCode, Night, NightInput } from "../types/Night";
@@ -14,6 +14,9 @@ import { spacing } from "../theme/spacing";
 import { theme } from "../theme/theme";
 import { persistNightPhotos } from "../lib/nightsStorage";
 import { getCurrencySymbol } from "../lib/formatCurrency";
+import { goBackOrReplace } from "../lib/navigation";
+import { showAlert } from "../lib/showAlert";
+import { formatCalendarDate, parseCalendarDate } from "../lib/calendarDate";
 
 type NightFormProps = {
   heading: string;
@@ -24,6 +27,7 @@ type NightFormProps = {
 };
 
 type FormValues = {
+  sourceEventId?: string;
   date: string;
   eventName: string;
   venueName: string;
@@ -38,8 +42,6 @@ type FormValues = {
   photos: string[];
 };
 
-const today = new Date().toISOString().slice(0, 10);
-
 function splitList(value: string): string[] {
   return value.split(",").map((item) => item.trim()).filter(Boolean);
 }
@@ -49,7 +51,8 @@ function getInitialValues(
   initialValues?: Partial<NightInput>,
 ): FormValues {
   return {
-    date: night?.date ?? initialValues?.date ?? today,
+    sourceEventId: night?.sourceEventId ?? initialValues?.sourceEventId,
+    date: night?.date ?? initialValues?.date ?? formatCalendarDate(new Date()),
     eventName: night?.eventName ?? initialValues?.eventName ?? "",
     venueName: night?.venueName ?? initialValues?.venueName ?? "",
     city: night?.city ?? initialValues?.city ?? "",
@@ -97,7 +100,7 @@ export function NightForm({
     try {
       const remaining = 12 - values.photos.length;
       if (remaining <= 0) {
-        Alert.alert("Photo limit reached", "A night can include up to 12 photos.");
+        showAlert("Photo limit reached", "A night can include up to 12 photos.");
         return;
       }
 
@@ -112,7 +115,7 @@ export function NightForm({
         update("photos", [...new Set([...values.photos, ...selected])].slice(0, 12));
       }
     } catch {
-      Alert.alert("Could not open photos", "Please try selecting your photos again.");
+      showAlert("Could not open photos", "Please try selecting your photos again.");
     }
   };
 
@@ -120,24 +123,19 @@ export function NightForm({
     const eventName = values.eventName.trim();
     const venueName = values.venueName.trim();
     const city = values.city.trim();
-    const dateParts = values.date.split("-").map(Number);
-    const parsedDate = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
     const cost = values.cost.trim() ? Number(values.cost) : 0;
 
-    if (!eventName || !venueName || !city || !/^\d{4}-\d{2}-\d{2}$/.test(values.date)
-      || Number.isNaN(parsedDate.getTime())
-      || parsedDate.getFullYear() !== dateParts[0]
-      || parsedDate.getMonth() !== dateParts[1] - 1
-      || parsedDate.getDate() !== dateParts[2]) {
-      Alert.alert("Complete the required fields", "Add an event, venue, city, and date in YYYY-MM-DD format.");
+    if (!eventName || !venueName || !city || !parseCalendarDate(values.date)) {
+      showAlert("Complete the required fields", "Add an event, venue, city, and a valid date.");
       return;
     }
     if (!Number.isFinite(cost) || cost < 0) {
-      Alert.alert("Check the cost", "Cost must be a positive number or zero.");
+      showAlert("Check the cost", "Cost must be a positive number or zero.");
       return;
     }
 
     const input: NightInput = {
+      sourceEventId: values.sourceEventId,
       date: values.date,
       eventName,
       venueName,
@@ -157,7 +155,7 @@ export function NightForm({
       input.photos = await persistNightPhotos(input.photos);
       await onSave(input);
     } catch {
-      Alert.alert("Could not save night", "Your changes were not saved. Please try again.");
+      showAlert("Could not save night", "Your changes were not saved. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -165,11 +163,11 @@ export function NightForm({
 
   return (
     <Screen edges={["left", "right", "bottom"]} scrollable contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <ScreenHeader title={heading} onBack={() => router.back()} />
+      <ScreenHeader title={heading} onBack={() => goBackOrReplace("/(tabs)/nights")} />
 
       <Text style={styles.sectionLabel}>THE NIGHT</Text>
       <Field label="Event name *" value={values.eventName} onChangeText={(text) => update("eventName", text)} placeholder="e.g. Afterglow" />
-      <Field label="Date *" value={values.date} onChangeText={(text) => update("date", text)} placeholder="YYYY-MM-DD" keyboardType="numbers-and-punctuation" />
+      <DateInput label="Date *" value={values.date} onChange={(date) => update("date", date)} />
       <Field label="Venue *" value={values.venueName} onChangeText={(text) => update("venueName", text)} placeholder="Venue name" />
       <Field label="City *" value={values.city} onChangeText={(text) => update("city", text)} placeholder="City" />
 
@@ -192,7 +190,8 @@ export function NightForm({
                 onPress={() => update("currency", option.code)}
                 style={[styles.currencyOption, selected && styles.currencyOptionSelected]}
                 accessibilityRole="radio"
-                accessibilityState={{ selected }}
+                accessibilityState={{ checked: selected }}
+                aria-checked={selected}
                 accessibilityLabel={`${option.code}, ${option.name}`}
               >
                 <Text style={[styles.currencyCode, selected && styles.currencyCodeSelected]}>{option.code}</Text>
@@ -268,6 +267,7 @@ function Field({ label, value, onChangeText, placeholder, keyboardType = "defaul
         <TextInput
           value={value}
           onChangeText={onChangeText}
+          accessibilityLabel={label.replace(" *", " (required)")}
           placeholder={placeholder}
           placeholderTextColor={theme.controls.input.placeholderColor}
           keyboardType={keyboardType}
@@ -399,7 +399,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   photoButton: {
-    minHeight: 36,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
@@ -433,11 +433,11 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 4,
     right: 4,
-    width: 24,
-    height: 24,
+    width: 44,
+    height: 44,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 12,
+    borderRadius: 22,
     backgroundColor: "rgba(5, 5, 5, 0.82)",
   },
   submitButton: {

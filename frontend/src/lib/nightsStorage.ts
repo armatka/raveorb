@@ -52,6 +52,7 @@ function isNight(value: unknown): value is Omit<Night, "currency"> & { currency?
   if (!value || typeof value !== "object") return false;
   const night = value as Partial<Night>;
   return typeof night.id === "string"
+    && (night.sourceEventId === undefined || typeof night.sourceEventId === "string")
     && typeof night.date === "string"
     && typeof night.eventName === "string"
     && typeof night.venueName === "string"
@@ -86,12 +87,13 @@ async function readAll(): Promise<Night[]> {
   try {
     parsed = JSON.parse(stored);
   } catch {
-    return [];
+    throw new Error("Journal data could not be read.");
   }
-  if (!Array.isArray(parsed)) return [];
-  const validNights = parsed.filter(isNight);
-  const nights = validNights.map(normalizeNight);
-  if (validNights.some((night) => night.currency === undefined)) {
+  if (!Array.isArray(parsed) || !parsed.every(isNight)) {
+    throw new Error("Journal data contains unsupported records.");
+  }
+  const nights = parsed.map(normalizeNight);
+  if (parsed.some((night) => night.currency === undefined)) {
     await writeAll(nights);
   }
   return sortNewestFirst(nights);
@@ -113,6 +115,11 @@ export const nightsStorage = {
   async get(id: string): Promise<Night | null> {
     const nights = await readAll();
     return nights.find((night) => night.id === id) ?? null;
+  },
+
+  async getBySourceEventId(sourceEventId: string): Promise<Night | null> {
+    const nights = await readAll();
+    return nights.find((night) => night.sourceEventId === sourceEventId) ?? null;
   },
 
   async create(input: NightInput): Promise<Night> {

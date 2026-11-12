@@ -33,7 +33,8 @@
         {
           "photosPermission": "RaveOrb uses your photo library to add memories to your night journal."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ]
   }
 }

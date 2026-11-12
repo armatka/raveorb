@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
@@ -11,22 +11,24 @@ type ChartItem = {
 type ChartCardProps = {
   title: string;
   items: ChartItem[];
+  onItemPress?: (item: ChartItem) => void;
+  itemAccessibilityLabel?: (item: ChartItem) => string;
 };
 
-export function ChartCard({ title, items }: ChartCardProps) {
+export function ChartCard({ title, items, onItemPress, itemAccessibilityLabel }: ChartCardProps) {
   const maxValue = Math.max(...items.map((item) => item.value), 1);
 
   return (
     <View style={styles.card}>
       <Text style={styles.title}>{title}</Text>
       {items.map((item) => (
-        <View key={item.label} style={styles.row}>
+        <Pressable key={item.label} style={styles.row} disabled={!onItemPress} onPress={() => onItemPress?.(item)} accessibilityRole={onItemPress ? "link" : undefined} accessibilityLabel={onItemPress ? itemAccessibilityLabel?.(item) ?? `View artist ${item.label}, ${item.value} nights` : undefined}>
           <Text style={styles.label}>{item.label}</Text>
           <View style={styles.barContainer}>
             <View style={[styles.bar, { width: `${(item.value / maxValue) * 100}%` }]} />
           </View>
           <Text style={styles.value}>{item.value}</Text>
-        </View>
+        </Pressable>
       ))}
     </View>
   );
@@ -50,6 +52,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
+    minHeight: 44,
     marginBottom: spacing.sm,
   },
   label: {

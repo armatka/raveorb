@@ -3,7 +3,6 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -11,99 +10,137 @@ import {
 } from "react-native";
 
 import EventDetailHeader from "../components/EventDetailHeader";
+import { ArtistLinks } from "../components/ArtistLinks";
+import { EmptyState } from "../components/EmptyState";
 import { Screen } from "../components/Screen";
-import { mockEvents, mockVenues } from "../data/mockData";
-import {
-  eventStatusStorage,
-  type EventStatus,
-} from "../lib/eventStatusStorage";
+import { ScreenHeader } from "../components/ScreenHeader";
+import { eventStatusStorage, type EventStatus } from "../lib/eventStatusStorage";
+import { formatEventDate, formatEventPrice, formatEventSchedule } from "../lib/eventFormatting";
+import { nightsStorage } from "../lib/nightsStorage";
+import { goBackOrReplace } from "../lib/navigation";
+import { showAlert } from "../lib/showAlert";
+import { eventsRepository } from "../services/eventsRepository";
 import { colors } from "../theme/colors";
-import { formatCurrency } from "../lib/formatCurrency";
 import { spacing } from "../theme/spacing";
+import type { EventEntry } from "../types/event";
 
 const statusOptions: Array<{
   value: EventStatus;
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
 }> = [
-  {
-    value: "interested",
-    label: "Interested",
-    icon: "heart-outline",
-  },
-  {
-    value: "going",
-    label: "Going",
-    icon: "calendar-outline",
-  },
-  {
-    value: "attended",
-    label: "Attended",
-    icon: "checkmark-circle-outline",
-  },
+  { value: "interested", label: "Interested", icon: "heart-outline" },
+  { value: "going", label: "Going", icon: "calendar-outline" },
+  { value: "attended", label: "Attended", icon: "checkmark-circle-outline" },
 ];
 
 export default function EventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const [event, setEvent] = useState<EventEntry | null>(null);
   const [status, setStatus] = useState<EventStatus | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
-
-  const event = mockEvents.find((item) => item.id === id);
-  const venue = event
-    ? mockVenues.find((item) => item.id === event.venueId)
-    : undefined;
+  const [linkedNightId, setLinkedNightId] = useState<string | null>(null);
+  const [loadingNight, setLoadingNight] = useState(true);
+  const [loadingEvent, setLoadingEvent] = useState(true);
+  const [eventError, setEventError] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState(false);
+  const [nightError, setNightError] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
       let isCurrent = true;
 
       if (!id) {
+        setEvent(null);
+        setEventError(null);
+        setLoadingEvent(false);
+        setStatus(null);
+        setLinkedNightId(null);
         setLoadingStatus(false);
+        setLoadingNight(false);
+        setStatusError(false);
+        setNightError(false);
         return () => {
           isCurrent = false;
         };
       }
 
+      setLoadingEvent(true);
+      setEventError(null);
       setLoadingStatus(true);
+      setLoadingNight(true);
 
-      eventStatusStorage
-        .get(id)
-        .then((savedStatus) => {
-          if (isCurrent) {
-            setStatus(savedStatus);
-          }
-        })
-        .catch(() => {
-          if (isCurrent) {
-            setStatus(null);
-          }
-        })
-        .finally(() => {
-          if (isCurrent) {
-            setLoadingStatus(false);
-          }
-        });
+      Promise.allSettled([
+        eventsRepository.getEvent(id),
+        eventStatusStorage.get(id),
+        nightsStorage.getBySourceEventId(id),
+      ]).then(([eventResult, statusResult, linkedNightResult]) => {
+        if (!isCurrent) return;
+
+        if (eventResult.status === "fulfilled") {
+          setEvent(eventResult.value);
+          setEventError(null);
+        } else {
+          setEvent(null);
+          setEventError(eventResult.reason instanceof Error ? eventResult.reason.message : "Could not load this event.");
+        }
+        setStatus(statusResult.status === "fulfilled" ? statusResult.value : null);
+        setLinkedNightId(linkedNightResult.status === "fulfilled" ? linkedNightResult.value?.id ?? null : null);
+        setStatusError(statusResult.status === "rejected");
+        setNightError(linkedNightResult.status === "rejected");
+      }).finally(() => {
+        if (isCurrent) {
+          setLoadingEvent(false);
+          setLoadingStatus(false);
+          setLoadingNight(false);
+        }
+      });
 
       return () => {
         isCurrent = false;
       };
-    }, [id]),
+    }, [id, retryToken]),
   );
+
+  const retryLoading = () => setRetryToken((token) => token + 1);
+
+  if (loadingEvent) {
+    return (
+      <Screen edges={["left", "right", "bottom"]}>
+        <ScreenHeader onBack={() => goBackOrReplace("/(tabs)/events")} />
+        <ActivityIndicator color={colors.primary} style={styles.statusLoader} />
+      </Screen>
+    );
+  }
+
+  if (eventError) {
+    return (
+      <Screen edges={["left", "right", "bottom"]}>
+        <ScreenHeader onBack={() => goBackOrReplace("/(tabs)/events")} />
+        <EmptyState
+          title="Discovery unavailable"
+          message={eventError}
+          icon="cloud-offline-outline"
+          action={(
+            <Pressable onPress={retryLoading} style={styles.secondaryButton} accessibilityRole="button" accessibilityLabel="Retry loading event">
+              <Text style={styles.secondaryButtonText}>Retry</Text>
+            </Pressable>
+          )}
+        />
+      </Screen>
+    );
+  }
 
   if (!event) {
     return (
-      <Screen>
+      <Screen edges={["left", "right", "bottom"]}>
+        <ScreenHeader onBack={() => goBackOrReplace("/(tabs)/events")} />
         <View style={styles.notFound}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={42}
-            color={colors.error}
-          />
+          <Ionicons name="alert-circle-outline" size={42} color={colors.error} />
           <Text style={styles.notFoundTitle}>Event not found</Text>
-          <Text style={styles.notFoundText}>
-            This event may no longer be available.
-          </Text>
-          <Pressable style={styles.secondaryButton} onPress={() => router.back()}>
+          <Text style={styles.notFoundText}>This event may no longer be available.</Text>
+          <Pressable style={styles.secondaryButton} onPress={() => goBackOrReplace("/(tabs)/events")} accessibilityRole="button">
             <Text style={styles.secondaryButtonText}>Go back</Text>
           </Pressable>
         </View>
@@ -111,43 +148,16 @@ export default function EventDetailScreen() {
     );
   }
 
-  const venueName = venue?.name ?? "Venue to be announced";
-  const location = `${venueName} · ${event.city}`;
-  const formattedDate = `${event.date} · ${event.startTime}`;
-
-  const selectStatus = async (nextStatus: EventStatus) => {
-    try {
-      await eventStatusStorage.set(event.id, nextStatus);
-      setStatus(nextStatus);
-
-      if (nextStatus === "attended") {
-        Alert.alert(
-          "Add this experience to My Nights?",
-          "RaveOrb can prefill your journal entry with the event details.",
-          [
-            {
-              text: "Not now",
-              style: "cancel",
-            },
-            {
-              text: "Add to My Nights",
-              onPress: openNightForm,
-            },
-          ],
-        );
-      }
-    } catch {
-      Alert.alert(
-        "Could not update event",
-        "Your selection was not saved. Please try again.",
-      );
-    }
-  };
+  const venueName = event.venueName || "Venue to be announced";
+  const region = [event.city, event.province, event.country ?? event.countryCode].filter((value): value is string => Boolean(value?.trim()));
+  const location = `${venueName} · ${region.join(", ")}`;
+  const formattedDate = formatEventSchedule(event);
 
   const openNightForm = () => {
     router.push({
       pathname: "/night/new",
       params: {
+        sourceEventId: event.sourceEventId ?? event.id,
         eventName: event.title,
         date: event.date,
         venueName,
@@ -157,128 +167,135 @@ export default function EventDetailScreen() {
     });
   };
 
+  const openLinkedNight = () => {
+    if (linkedNightId) {
+      router.push({ pathname: "/night/[id]", params: { id: linkedNightId } });
+    } else {
+      openNightForm();
+    }
+  };
+
+  const selectStatus = async (nextStatus: EventStatus) => {
+    const updatedStatus = status === nextStatus ? null : nextStatus;
+    try {
+      await eventStatusStorage.set(event.id, updatedStatus);
+      setStatus(updatedStatus);
+    } catch {
+      showAlert("Could not update event", "Your selection was not saved. Please try again.");
+    }
+  };
+
   return (
-    <Screen scrollable contentContainerStyle={styles.content}>
-        <EventDetailHeader
-          title={event.title}
-          date={formattedDate}
-          location={location}
-          type={event.type}
-        />
+    <Screen edges={["left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
+      <ScreenHeader onBack={() => goBackOrReplace("/(tabs)/events")} />
+      <EventDetailHeader title={event.title} date={formattedDate} location={location} type={event.type} />
 
-        <View style={styles.statusPanel}>
-          <Text style={styles.sectionTitle}>Your plan</Text>
-          <Text style={styles.statusDescription}>
-            Save this event to your RaveOrb journey.
-          </Text>
-
-          {loadingStatus ? (
-            <ActivityIndicator
-              color={colors.primary}
-              style={styles.statusLoader}
-            />
-          ) : (
-            <View style={styles.statusRow}>
-              {statusOptions.map((option) => {
-                const selected = status === option.value;
-
-                return (
-                  <Pressable
-                    key={option.value}
-                    onPress={() => selectStatus(option.value)}
-                    style={[
-                      styles.statusButton,
-                      selected && styles.statusButtonSelected,
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                  >
-                    <Ionicons
-                      name={option.icon}
-                      size={20}
-                      color={selected ? colors.background : colors.secondary}
-                    />
-                    <Text
-                      style={[
-                        styles.statusButtonText,
-                        selected && styles.statusButtonTextSelected,
-                      ]}
-                    >
-                      {option.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
-
-          {status === "attended" ? (
-            <Pressable style={styles.primaryButton} onPress={openNightForm}>
-              <Ionicons
-                name="book-outline"
-                size={19}
-                color={colors.background}
-              />
-              <Text style={styles.primaryButtonText}>Add to My Nights</Text>
+      <View style={styles.statusPanel}>
+        <Text style={styles.sectionTitle}>Your plan</Text>
+        <Text style={styles.statusDescription}>Save this event to your RaveOrb journey.</Text>
+        {loadingStatus ? (
+          <ActivityIndicator color={colors.primary} style={styles.statusLoader} />
+        ) : statusError ? (
+          <Pressable onPress={retryLoading} style={styles.secondaryButton} accessibilityRole="button" accessibilityLabel="Retry loading event status">
+            <Text style={styles.secondaryButtonText}>Event status unavailable. Retry</Text>
+          </Pressable>
+        ) : (
+          <View style={styles.statusRow}>
+            {statusOptions.map((option) => {
+              const selected = status === option.value;
+              return (
+                <Pressable
+                  key={option.value}
+                  onPress={() => selectStatus(option.value)}
+                  style={({ pressed }) => [styles.statusButton, selected && styles.statusButtonSelected, pressed && styles.statusButtonPressed]}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: selected }}
+                  aria-checked={selected}
+                  accessibilityLabel={selected ? `Remove ${option.label} status` : `Mark event ${option.label}`}
+                >
+                  <Ionicons name={option.icon} size={20} color={selected ? colors.background : colors.secondary} />
+                  <Text style={[styles.statusButtonText, selected && styles.statusButtonTextSelected]}>{option.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+        {status === "attended" ? (
+          loadingNight ? (
+            <ActivityIndicator color={colors.primary} style={styles.statusLoader} />
+          ) : nightError ? (
+            <Pressable onPress={retryLoading} style={styles.secondaryButton} accessibilityRole="button" accessibilityLabel="Retry loading linked night">
+              <Text style={styles.secondaryButtonText}>Journal unavailable. Retry</Text>
             </Pressable>
-          ) : null}
-        </View>
+          ) : (
+            <Pressable
+              style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
+              onPress={openLinkedNight}
+              accessibilityRole="button"
+              accessibilityLabel={linkedNightId ? "View in My Nights" : "Add to My Nights"}
+            >
+              <Ionicons name={linkedNightId ? "book" : "book-outline"} size={19} color={colors.background} />
+              <Text style={styles.primaryButtonText}>{linkedNightId ? "View in My Nights" : "Add to My Nights"}</Text>
+            </Pressable>
+          )
+        ) : null}
+      </View>
 
-        <View style={styles.summaryCard}>
-          <Text style={styles.sectionTitle}>At a glance</Text>
-          <View style={styles.statRow}>
-            <View style={styles.statBox}>
-              <Text style={styles.statLabel}>Vibe</Text>
-              <Text style={styles.statValue}>{event.vibeScore}/100</Text>
-            </View>
-
-            <View style={styles.statBox}>
-              <Text style={styles.statLabel}>Spend</Text>
-              <Text style={styles.statValue}>{formatCurrency(event.spend, "USD")}</Text>
-            </View>
-
-            <View style={styles.statBox}>
-              <Text style={styles.statLabel}>Duration</Text>
-              <Text style={styles.statValue}>{event.durationHours}h</Text>
-            </View>
+      <View style={styles.summaryCard}>
+        <Text style={styles.sectionTitle}>At a glance</Text>
+        <View style={styles.statRow}>
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>Date</Text>
+            <Text style={styles.statValue}>{formatEventDate(event.date)}</Text>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>Tickets</Text>
+            <Text style={styles.statValue}>{formatEventPrice(event)}</Text>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>Status</Text>
+            <Text style={styles.statValue}>{(event.status ?? "scheduled").replace("-", " ")}</Text>
           </View>
         </View>
+      </View>
 
-        <View style={styles.panel}>
-          <Text style={styles.sectionTitle}>Artist lineup</Text>
-          <View style={styles.tagRow}>
-            {event.artists.map((artist) => (
-              <View key={artist} style={styles.tag}>
-                <Text style={styles.tagText}>{artist}</Text>
-              </View>
-            ))}
-          </View>
+      <View style={styles.panel}>
+        <Text style={styles.sectionTitle}>Genres</Text>
+        <View style={styles.tagRow}>
+          {event.genres.map((genre) => (
+            <View key={genre} style={styles.tag}>
+              <Text style={styles.tagText}>{genre}</Text>
+            </View>
+          ))}
         </View>
+      </View>
 
-        <View style={styles.panel}>
-          <Text style={styles.sectionTitle}>Event notes</Text>
-          <Text style={styles.notes}>{event.notes}</Text>
-
+      <View style={styles.panel}>
+        <Text style={styles.sectionTitle}>About this event</Text>
+        <Text style={styles.notes}>{event.description}</Text>
+        <Text style={styles.sectionTitle}>Artist lineup</Text>
+        <ArtistLinks names={event.artists} />
+        <View style={styles.detailRow}>
+          <Ionicons name="location-outline" size={18} color={colors.secondary} />
+          <Text style={styles.detailText}>{location}</Text>
+        </View>
+        {event.address ? (
           <View style={styles.detailRow}>
-            <Ionicons
-              name="location-outline"
-              size={18}
-              color={colors.secondary}
-            />
-            <Text style={styles.detailText}>{location}</Text>
+            <Ionicons name="navigate-outline" size={18} color={colors.secondary} />
+            <Text style={styles.detailText}>{event.address}</Text>
           </View>
-
-          <View style={styles.detailRow}>
-            <Ionicons
-              name="time-outline"
-              size={18}
-              color={colors.secondary}
-            />
-            <Text style={styles.detailText}>
-              {event.startTime} to {event.endTime}
-            </Text>
-          </View>
+        ) : null}
+        <View style={styles.detailRow}>
+          <Ionicons name="time-outline" size={18} color={colors.secondary} />
+          <Text style={styles.detailText}>{event.endTime ? `${event.startTime} to ${event.endTime}` : event.startTime}{event.timezone ? ` ${event.timezone}` : ""}</Text>
         </View>
+        {event.ageRestriction ? (
+          <View style={styles.detailRow}>
+            <Ionicons name="id-card-outline" size={18} color={colors.secondary} />
+            <Text style={styles.detailText}>{event.ageRestriction}</Text>
+          </View>
+        ) : null}
+      </View>
     </Screen>
   );
 }
@@ -329,6 +346,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
+  statusButtonPressed: {
+    opacity: 0.75,
+  },
   statusButtonText: {
     color: colors.textSecondary,
     fontSize: 11,
@@ -354,10 +374,14 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.6,
   },
+  primaryButtonPressed: {
+    opacity: 0.78,
+  },
   secondaryButton: {
+    minHeight: 44,
+    justifyContent: "center",
     marginTop: spacing.lg,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
@@ -366,6 +390,7 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: colors.text,
     fontWeight: "700",
+    textAlign: "center",
   },
   summaryCard: {
     backgroundColor: colors.surface,
@@ -403,8 +428,9 @@ const styles = StyleSheet.create({
   },
   statValue: {
     color: colors.text,
-    fontSize: 17,
+    fontSize: 14,
     fontWeight: "800",
+    textAlign: "center",
   },
   panel: {
     backgroundColor: colors.surface,
@@ -433,7 +459,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     textTransform: "uppercase",
-    letterSpacing: 1,
+    letterSpacing: 0.6,
   },
   notes: {
     color: colors.textSecondary,
