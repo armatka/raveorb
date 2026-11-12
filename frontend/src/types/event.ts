@@ -1,6 +1,6 @@
 export type EventType = "festival" | "rave" | "concert" | "club";
 export type EventStatus = "scheduled" | "cancelled" | "postponed" | "sold-out";
-export type EventCurrency = "CAD" | "USD" | "EUR";
+export type EventCurrency = string;
 
 export interface EventEntry {
   id: string;
@@ -10,10 +10,13 @@ export interface EventEntry {
   venueName: string;
   city: string;
   countryCode: string;
+  province?: string;
+  country?: string;
   address?: string;
   latitude?: number;
   longitude?: number;
   date: string;
+  dateTime?: string;
   startTime: string;
   endTime: string;
   timezone: string;
@@ -28,6 +31,8 @@ export interface EventEntry {
   currency?: EventCurrency;
   source: string;
   sourceEventId?: string;
+  ticketSaleStartDateTime?: string;
+  ticketSaleEndDateTime?: string;
   ageRestriction?: string;
   status?: EventStatus;
 }

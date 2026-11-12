@@ -8,6 +8,7 @@ import type { EventStatus } from "../lib/eventStatusStorage";
 import { formatEventPrice, formatEventSchedule } from "../lib/eventFormatting";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
+import { ArtistLinks } from "./ArtistLinks";
 
 type EventListItemProps = {
   event: EventEntry;
@@ -59,9 +60,9 @@ export function EventListItem({ event, status, onStatusChange }: EventListItemPr
         <Text style={styles.meta} numberOfLines={1}>{event.venueName}</Text>
         <Text style={styles.meta} numberOfLines={1}>{event.city}, {event.countryCode} · {formatEventSchedule(event)}</Text>
         <Text style={styles.genres} numberOfLines={1}>{event.genres.slice(0, 3).join(" · ")}</Text>
-        <Text style={styles.artists} numberOfLines={1}>{event.artists.slice(0, 3).join(" · ")}</Text>
       </View>
       </Pressable>
+        {event.artists.length > 0 ? <View style={styles.artistLinks}><ArtistLinks names={event.artists} compact /></View> : null}
         <View style={styles.footer}>
           <Text style={styles.price}>{formatEventPrice(event)}</Text>
           {status ? (
@@ -157,11 +158,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
   },
-  artists: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    marginTop: spacing.xs,
-  },
+  artistLinks: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   genres: {
     color: colors.secondary,
     fontSize: 12,

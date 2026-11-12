@@ -5,6 +5,8 @@ import { useCallback, useState } from "react";
 import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { EmptyState } from "../components/EmptyState";
+import { ArtistLinks } from "../components/ArtistLinks";
+import { FriendLinks } from "../components/FriendLinks";
 import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { nightsStorage } from "../lib/nightsStorage";
@@ -125,8 +127,8 @@ export default function NightDetailScreen() {
         </View>
       </View>
 
-      {night.artistsSeen.length > 0 ? <DetailSection title="Artists" values={night.artistsSeen} /> : null}
-      {night.friends.length > 0 ? <DetailSection title="With" values={night.friends} /> : null}
+      {night.artistsSeen.length > 0 ? <View style={styles.section}><Text style={styles.sectionLabel}>ARTISTS</Text><ArtistLinks names={night.artistsSeen} /></View> : null}
+      {night.friends.length > 0 ? <View style={styles.section}><Text style={styles.sectionLabel}>WITH</Text><FriendLinks names={night.friends} /></View> : null}
       {night.favoriteMoment ? (
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>FAVORITE MOMENT</Text>
@@ -151,26 +153,6 @@ export default function NightDetailScreen() {
       ) : null}
       <Text style={styles.updated}>Updated {new Date(night.updatedAt).toLocaleDateString()}</Text>
     </Screen>
-  );
-}
-
-type DetailSectionProps = {
-  title: string;
-  values: string[];
-};
-
-function DetailSection({ title, values }: DetailSectionProps) {
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionLabel}>{title.toUpperCase()}</Text>
-      <View style={styles.tagRow}>
-        {values.map((value) => (
-          <View key={value} style={styles.tag}>
-            <Text style={styles.tagText}>{value}</Text>
-          </View>
-        ))}
-      </View>
-    </View>
   );
 }
 

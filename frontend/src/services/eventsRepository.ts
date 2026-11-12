@@ -1,6 +1,7 @@
 import { mockEvents, mockVenues } from "../data/mockData";
 import type { EventEntry, EventCurrency, EventStatus, EventType } from "../types/event";
 import type { Venue } from "../types/venue";
+import { getEventsApiBaseUrl, hasEventsApi, readPageHeader, requestEventsApi, serializeEventsQuery, type EventsApiQuery } from "./eventsApi";
 
 export type EventQueryFilters = {
   city?: string;
@@ -9,12 +10,24 @@ export type EventQueryFilters = {
   startDate?: string;
   endDate?: string;
   search?: string;
+  countryCode?: string;
+  postalCode?: string;
+  latlong?: string;
+  radius?: number;
+  unit?: "km" | "miles";
+  classificationName?: string;
+  genreId?: string;
+  startDateTime?: string;
+  endDateTime?: string;
+  page?: number;
+  size?: number;
+  sort?: string;
 };
 
 export type EventsDataMode = "api" | "mock";
+export type EventSearchPage = { events: EventEntry[]; page: number; totalPages: number; totalElements: number };
 
-const REQUEST_TIMEOUT_MS = 10_000;
-const apiBaseUrl = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, "") ?? "";
+const apiBaseUrl = getEventsApiBaseUrl();
 
 export const eventsDataMode: EventsDataMode = apiBaseUrl ? "api" : "mock";
 
@@ -31,7 +44,7 @@ function isEventType(value: unknown): value is EventType {
 }
 
 function isEventCurrency(value: unknown): value is EventCurrency {
-  return value === "CAD" || value === "USD" || value === "EUR";
+  return typeof value === "string" && /^[A-Z]{3}$/.test(value);
 }
 
 function isEventStatus(value: unknown): value is EventStatus {
@@ -89,40 +102,6 @@ function isVenue(value: unknown): value is Venue {
     && typeof value.type === "string"
     && typeof value.visits === "number"
     && typeof value.favoriteGenre === "string";
-}
-
-async function requestJson(path: string): Promise<Response> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    return await fetch(`${apiBaseUrl}${path}`, {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      signal: controller.signal,
-    });
-  } catch (error) {
-    if (controller.signal.aborted) {
-      throw new Error("The event service timed out. Check your connection and retry.");
-    }
-    throw new Error("The event service could not be reached. Check the API URL and connection.", { cause: error });
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function parseResponse<T>(response: Response, parse: (value: unknown) => T): Promise<T> {
-  if (!response.ok) {
-    if (response.status === 404) throw new EventNotFoundError();
-    throw new Error(`The event service returned an error (${response.status}).`);
-  }
-
-  let payload: unknown;
-  try {
-    payload = await response.json();
-  } catch (error) {
-    throw new Error("The event service returned invalid JSON.", { cause: error });
-  }
-  return parse(payload);
 }
 
 function parseEvents(value: unknown): EventEntry[] {
@@ -202,6 +181,44 @@ function queryString(filters: EventQueryFilters): string {
   return query ? `?${query}` : "";
 }
 
+function apiQuery(filters: EventQueryFilters): EventsApiQuery {
+  return {
+    keyword: filters.search,
+    city: filters.city,
+    countryCode: filters.countryCode ?? "CA",
+    postalCode: filters.postalCode,
+    latlong: filters.latlong,
+    radius: filters.radius,
+    unit: filters.unit ?? "km",
+    classificationName: filters.classificationName ?? "Music",
+    genreId: filters.genreId,
+    startDateTime: filters.startDateTime,
+    endDateTime: filters.endDateTime,
+    page: filters.page ?? 0,
+    size: filters.size ?? 20,
+    sort: filters.sort ?? "date,asc",
+  };
+}
+
+function matchesLegacyFilters(event: EventEntry, filters: EventQueryFilters): boolean {
+  const search = filters.search?.trim().toLocaleLowerCase();
+  const searchable = [event.title, event.venueName, event.city, ...event.artists, ...event.genres].join(" ").toLocaleLowerCase();
+  return (!filters.genre || event.genres.some((genre) => genre.toLocaleLowerCase() === filters.genre?.trim().toLocaleLowerCase()))
+    && (!filters.type || event.type === filters.type)
+    && (!filters.startDate || event.date >= filters.startDate)
+    && (!filters.endDate || event.date <= filters.endDate)
+    && (!search || searchable.includes(search));
+}
+
+function pageHeader(response: Response, name: string, fallback: number): number {
+  return readPageHeader(response, name, fallback);
+}
+
+function isNotFound(error: unknown): boolean {
+  return error instanceof EventNotFoundError
+    || (typeof error === "object" && error !== null && "status" in error && error.status === 404);
+}
+
 export class EventNotFoundError extends Error {
   constructor() {
     super("The requested record was not found.");
@@ -211,36 +228,54 @@ export class EventNotFoundError extends Error {
 
 export const eventsRepository = {
   async listEvents(filters: EventQueryFilters = {}): Promise<EventEntry[]> {
+    const result = await this.listEventsPage({ ...filters, page: filters.page ?? 0, size: filters.size ?? 50 });
+    return result.events;
+  },
+
+  async listEventsPage(filters: EventQueryFilters = {}): Promise<EventSearchPage> {
     validateFilters(filters);
-    if (!apiBaseUrl) return filteredMockEvents(filters);
-    const response = await requestJson(`/api/events${queryString(filters)}`);
-    return parseResponse(response, parseEvents);
+    const page = filters.page ?? 0;
+    const size = filters.size ?? 20;
+    if (!Number.isInteger(page) || page < 0) throw new Error("Event page must be a non-negative integer.");
+    if (!Number.isInteger(size) || size < 1 || size > 50) throw new Error("Event page size must be between 1 and 50.");
+    if (!hasEventsApi()) {
+      const all = filteredMockEvents(filters);
+      return { events: all.slice(page * size, (page + 1) * size), page, totalPages: Math.max(1, Math.ceil(all.length / size)), totalElements: all.length };
+    }
+    const { payload, response } = await requestEventsApi(`/api/events${serializeEventsQuery(apiQuery({ ...filters, page, size }))}`);
+    const events = parseEvents(payload).filter((event) => matchesLegacyFilters(event, filters));
+    return {
+      events,
+      page: pageHeader(response, "X-Page", page),
+      totalPages: pageHeader(response, "X-Total-Pages", 1),
+      totalElements: pageHeader(response, "X-Total-Elements", events.length),
+    };
   },
 
   async getEvent(id: string): Promise<EventEntry | null> {
-    if (!apiBaseUrl) return mockEvents.find((event) => event.id === id) ?? null;
+    if (!hasEventsApi()) return mockEvents.find((event) => event.id === id) ?? null;
     try {
-      const response = await requestJson(`/api/events/${encodeURIComponent(id)}`);
-      return await parseResponse(response, parseEvent);
+      const { payload } = await requestEventsApi(`/api/events/${encodeURIComponent(id)}`);
+      return parseEvent(payload);
     } catch (error) {
-      if (error instanceof EventNotFoundError) return null;
+      if (isNotFound(error)) return null;
       throw error;
     }
   },
 
   async listVenues(): Promise<Venue[]> {
-    if (!apiBaseUrl) return [...mockVenues];
-    const response = await requestJson("/api/venues");
-    return parseResponse(response, parseVenues);
+    if (!hasEventsApi()) return [...mockVenues];
+    const { payload } = await requestEventsApi("/api/venues");
+    return parseVenues(payload);
   },
 
   async getVenue(id: string): Promise<Venue | null> {
-    if (!apiBaseUrl) return mockVenues.find((venue) => venue.id === id) ?? null;
+    if (!hasEventsApi()) return mockVenues.find((venue) => venue.id === id) ?? null;
     try {
-      const response = await requestJson(`/api/venues/${encodeURIComponent(id)}`);
-      return await parseResponse(response, parseVenue);
+      const { payload } = await requestEventsApi(`/api/venues/${encodeURIComponent(id)}`);
+      return parseVenue(payload);
     } catch (error) {
-      if (error instanceof EventNotFoundError) return null;
+      if (isNotFound(error)) return null;
       throw error;
     }
   },

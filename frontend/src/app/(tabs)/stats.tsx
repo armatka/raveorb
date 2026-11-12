@@ -4,6 +4,8 @@ import { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { ChartCard } from "../../components/ChartCard";
+import { openArtist } from "../../components/ArtistLinks";
+import { openFriend } from "../../components/FriendLinks";
 import { EmptyState } from "../../components/EmptyState";
 import { Screen } from "../../components/Screen";
 import { StatCard } from "../../components/StatCard";
@@ -112,10 +114,10 @@ export default function StatsScreen() {
 
                 <Text style={styles.scopeCaption}>TOP INSIGHTS</Text>
                 <View style={styles.insightList}>
-                  <Insight label="Most-seen artist" item={stats.mostSeenArtist} suffix="nights" />
+                  <Insight label="Most-seen artist" item={stats.mostSeenArtist} suffix="nights" onPress={stats.mostSeenArtist ? () => openArtist(stats.mostSeenArtist!.label) : undefined} />
                   <Insight label="Most-visited venue" item={stats.mostVisitedVenue} suffix="nights" />
                   <Insight label="Most frequent city" item={stats.mostFrequentCity} suffix="nights" />
-                  <Insight label="Most frequent friend" item={stats.mostFrequentFriend} suffix="nights" />
+                  <Insight label="Most frequent friend" item={stats.mostFrequentFriend} suffix="nights" onPress={stats.mostFrequentFriend ? () => openFriend(stats.mostFrequentFriend!.label) : undefined} accessibilityLabel={stats.mostFrequentFriend ? `View shared history with ${stats.mostFrequentFriend.label}` : undefined} />
                   <Insight label="Busiest month" item={stats.busiestMonth} suffix="nights" />
                   {stats.highestRatedNight ? (
                     <View style={styles.highestRated}>
@@ -138,8 +140,8 @@ export default function StatsScreen() {
                 <ChartCard title="Nights by city" items={stats.nightsByCity} />
                 <ChartCard title="Nights by venue" items={stats.nightsByVenue} />
                 <ChartCard title="Nights by rating" items={stats.nightsByRating} />
-                <ChartCard title="Artists seen most often" items={stats.artistsByFrequency} />
-                <ChartCard title="Friends appearing most often" items={stats.friendsByFrequency} />
+                <ChartCard title="Artists seen most often" items={stats.artistsByFrequency} onItemPress={(item) => openArtist(item.label)} />
+                <ChartCard title="Friends appearing most often" items={stats.friendsByFrequency} onItemPress={(item) => openFriend(item.label)} itemAccessibilityLabel={(item) => `View shared history with ${item.label}, ${item.value} nights`} />
 
                 <Text style={styles.scopeCaption}>SPEND BY CURRENCY</Text>
                 {stats.spending.length > 0 ? (
@@ -183,16 +185,16 @@ function YearButton({ label, selected, onPress }: { label: string; selected: boo
   );
 }
 
-function Insight({ label, item, suffix }: { label: string; item: { label: string; value: number } | null; suffix: string }) {
+function Insight({ label, item, suffix, onPress, accessibilityLabel }: { label: string; item: { label: string; value: number } | null; suffix: string; onPress?: () => void; accessibilityLabel?: string }) {
   return (
-    <View style={styles.insightRow}>
+    <Pressable style={styles.insightRow} disabled={!onPress} onPress={onPress} accessibilityRole={onPress ? "link" : undefined} accessibilityLabel={onPress && item ? accessibilityLabel ?? `View artist ${item.label}` : undefined}>
       <View style={styles.insightMarker} />
       <View style={styles.insightCopy}>
         <Text style={styles.insightLabel}>{label.toUpperCase()}</Text>
         <Text style={styles.insightName} numberOfLines={1}>{item?.label ?? "Not enough data"}</Text>
       </View>
       {item ? <Text style={styles.insightCount}>{item.value} {suffix}</Text> : null}
-    </View>
+    </Pressable>
   );
 }
 

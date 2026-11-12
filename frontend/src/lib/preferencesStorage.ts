@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export type AppPreferences = {
   discoveryCity: string | null;
+  discoveryCityConfigured: boolean;
 };
 
 const STORAGE_KEY = "raveorb.preferences.v1";
@@ -31,7 +32,10 @@ export const preferencesStorage = {
   async get(): Promise<AppPreferences> {
     await writeQueue;
     const stored = await readPreferences();
-    return { discoveryCity: typeof stored.discoveryCity === "string" ? stored.discoveryCity : null };
+    return {
+      discoveryCity: typeof stored.discoveryCity === "string" ? stored.discoveryCity : null,
+      discoveryCityConfigured: Object.prototype.hasOwnProperty.call(stored, "discoveryCity"),
+    };
   },
 
   async setDiscoveryCity(city: string | null): Promise<void> {

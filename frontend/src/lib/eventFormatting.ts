@@ -19,7 +19,8 @@ export function formatEventDate(date: string): string {
 }
 
 export function formatEventSchedule(event: Pick<EventEntry, "date" | "startTime" | "endTime" | "timezone">): string {
-  return `${formatEventDate(event.date)} · ${event.startTime}–${event.endTime} ${event.timezone}`;
+  const time = event.endTime ? `${event.startTime}–${event.endTime}` : event.startTime;
+  return `${formatEventDate(event.date)} · ${time}${event.timezone ? ` ${event.timezone}` : ""}`;
 }
 
 export function formatEventPrice(event: Pick<EventEntry, "priceMin" | "priceMax" | "currency">): string {

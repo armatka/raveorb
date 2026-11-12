@@ -5,8 +5,8 @@ RaveOrb is an Expo app for discovering electronic music events and keeping a per
 ## Architecture
 
 - Expo Router provides the frontend's tab and detail routes. Shared `Screen` and `ScreenHeader` components handle safe areas and headers.
-- The frontend event repository uses bundled mock events when `EXPO_PUBLIC_API_URL` is unset, or the Express API when it is set. API errors are shown rather than silently falling back to mocks.
-- The Express API serves development mock events and venues with list, detail, and event filter endpoints. There is no real event provider or durable backend event database yet.
+- The frontend event repository uses bundled sample events only when `EXPO_PUBLIC_API_BASE_URL` is unset. When configured, Discovery reads Ticketmaster through the Express API; API errors are shown rather than silently falling back to samples.
+- The Express API normalizes Ticketmaster Discovery API v2 responses and keeps `TICKETMASTER_API_KEY` on the server. Venue and stats endpoints continue to use local development data.
 - Nights and personal event statuses are stored locally with AsyncStorage. On native devices, selected photos are copied to app-managed document storage. Old Nights without a currency are migrated to USD; unsupported or malformed stored records are not overwritten.
 - Stats are computed from local Nights and group spending by currency without conversion. Journal data is device-local and is not synced or backed up by the app.
 
@@ -39,12 +39,35 @@ cd backend
 npm run dev
 ```
 
-The API listens on port 3000 by default. `npm run build` compiles the server, and `npm start` runs the compiled output. The health endpoint is `GET /api/health`; event and venue endpoints are under `/api/events` and `/api/venues`.
+The API listens on port 3000 by default. `npm run build` compiles the server, `npm test` runs isolated adapter tests, and `npm start` runs the compiled output. The health endpoint is `GET /api/health`; event and venue endpoints are under `/api/events` and `/api/venues`.
+
+## Ticketmaster Discovery
+
+Copy `backend/.env.example` to `backend/.env` and set `TICKETMASTER_API_KEY` to a Ticketmaster Discovery API key. Keep this value in the backend environment only. Never put it in frontend source, `frontend/.env`, or an `EXPO_PUBLIC_*` variable; Expo embeds public variables in the client app. The backend reads the key at request time and does not include it in error messages or logs.
+
+Set `EXPO_PUBLIC_API_BASE_URL` in `frontend/.env` to the backend origin, without an `/api` suffix. Examples:
+
+- iOS Simulator or Android emulator (when supported by the emulator): `http://localhost:3000`
+- Physical phone: `http://<computer-LAN-address>:3000`, with both devices on the same network
+- Deployed backend: its HTTPS origin
+
+Restart Expo after changing frontend environment variables. If the variable is unset, Discovery shows a clearly labeled development sample catalog. If it is set but the backend or Ticketmaster request fails, the app shows an error and retry action; it does not switch to sample data.
+
+Example requests to the backend:
+
+```sh
+curl 'http://localhost:3000/api/events?city=Toronto&countryCode=CA&classificationName=Music&page=0&size=20&sort=date%2Casc'
+curl 'http://localhost:3000/api/events?keyword=house&city=Toronto&countryCode=CA&page=0&size=20'
+curl 'http://localhost:3000/api/events/<ticketmaster-event-id>'
+```
+
+The event list returns normalized event records and pagination metadata in `X-Page`, `X-Total-Pages`, and `X-Total-Elements` response headers. Common failures: a backend `500` with “not configured” means the backend key is missing; a `401` or `403` means Ticketmaster rejected the credential; a `429` means the provider rate limit was reached; a connection error usually means the API base URL is wrong or the phone cannot reach the computer. Check backend logs for the sanitized failure category, verify the key in the backend environment without pasting it into logs or chat, and retry after correcting configuration or network access.
 
 ## Environment Variables
 
-- `EXPO_PUBLIC_API_URL`: frontend API origin, with no `/api` suffix. Leave it unset for bundled mocks. To use the backend, copy `frontend/.env.example` to `frontend/.env` and set an origin such as `http://localhost:3000`. For a physical phone, use the computer's LAN address instead of `localhost`. Restart Expo after changing it. Expo public variables are embedded in the app and must not contain secrets.
+- `EXPO_PUBLIC_API_BASE_URL`: frontend backend origin, with no `/api` suffix. Leave it unset for the clearly labeled development sample catalog. See Ticketmaster Discovery above for local and device examples. Expo public variables are embedded in the app and must not contain secrets.
 - `PORT`: optional backend listening port, default `3000`. If changed, update the frontend API origin accordingly.
+- `TICKETMASTER_API_KEY`: required backend-only Ticketmaster Discovery API credential. Configure in `backend/.env`; never expose it through the frontend.
 
 ## Checks
 
@@ -57,6 +80,7 @@ npm audit
 
 cd ../backend
 npm run build
+npm test
 npm audit
 ```
 

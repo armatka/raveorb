@@ -55,7 +55,7 @@ export default function HomeScreen() {
           } else {
             setEventLoadError(eventResult.reason instanceof Error ? eventResult.reason.message : "Could not load events.");
           }
-          if (preferenceResult.status === "fulfilled") setDiscoveryCity(preferenceResult.value.discoveryCity);
+          if (preferenceResult.status === "fulfilled") setDiscoveryCity(preferenceResult.value.discoveryCityConfigured ? preferenceResult.value.discoveryCity : "Toronto");
           setLocationError(preferenceResult.status === "rejected");
         })
         .finally(() => {
@@ -119,7 +119,7 @@ export default function HomeScreen() {
 
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Your pulse</Text>
-            <Text style={styles.sectionMeta}>{currentYear}</Text>
+            <Pressable onPress={() => router.push("/my-raveorb")} style={styles.profileLink} accessibilityRole="button" accessibilityLabel="Open My RaveOrb"><Text style={styles.sectionMeta}>My RaveOrb</Text><Ionicons name="chevron-forward" size={16} color={colors.secondary} /></Pressable>
           </View>
 
           {loading ? (
@@ -471,6 +471,7 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.8,
   },
+  profileLink: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: spacing.xs },
 });
 
 function QuickAction({ icon, label, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void }) {

@@ -7,6 +7,8 @@ import type { Night } from "../types/Night";
 import { formatCurrency } from "../lib/formatCurrency";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
+import { ArtistLinks } from "./ArtistLinks";
+import { FriendLinks } from "./FriendLinks";
 
 type NightCardProps = {
   night: Night;
@@ -54,15 +56,15 @@ export function NightCard({ night, layout = "timeline", showConnector = true }: 
           <View style={styles.bodyText}>
             <Text style={styles.name} numberOfLines={2}>{night.eventName}</Text>
             <Text style={styles.location} numberOfLines={1}>{night.venueName} · {night.city}</Text>
-            {night.artistsSeen.length > 0 ? (
-              <Text style={styles.artists} numberOfLines={1}>{night.artistsSeen.join(" · ")}</Text>
-            ) : null}
           </View>
           {night.photos[0] ? (
             <Image source={{ uri: night.photos[0] }} contentFit="cover" style={styles.thumbnail} accessibilityLabel={`${night.eventName} photo`} />
           ) : null}
         </View>
-        <View style={styles.bottomRow}>
+        </Pressable>
+        {night.artistsSeen.length > 0 ? <View style={styles.artistLinks}><ArtistLinks names={night.artistsSeen} compact /></View> : null}
+        {night.friends.length > 0 ? <View style={styles.artistLinks}><FriendLinks names={night.friends} compact /></View> : null}
+        <Pressable onPress={() => router.push({ pathname: "/night/[id]", params: { id: night.id } })} style={styles.bottomRow} accessibilityRole="button" accessibilityLabel={`Open ${night.eventName} details`}>
           <View style={styles.metadataRow}>
             <Ionicons name="images-outline" size={13} color={colors.muted} />
             <Text style={styles.photoCount}>{night.photos.length} {night.photos.length === 1 ? "photo" : "photos"}</Text>
@@ -70,7 +72,6 @@ export function NightCard({ night, layout = "timeline", showConnector = true }: 
             <Text style={styles.photoCount}>{night.friends.length}</Text>
           </View>
           <Text style={styles.cost}>{formatCurrency(night.cost, night.currency)}</Text>
-        </View>
         </Pressable>
         <Pressable
           onPress={() => router.push({ pathname: "/night/[id]/edit", params: { id: night.id } })}
@@ -202,11 +203,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: 13,
   },
-  artists: {
-    color: colors.muted,
-    fontSize: 12,
-    marginTop: spacing.sm,
-  },
+  artistLinks: { marginTop: spacing.sm },
   bottomRow: {
     flexDirection: "row",
     alignItems: "center",

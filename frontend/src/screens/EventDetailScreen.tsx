@@ -10,6 +10,7 @@ import {
 } from "react-native";
 
 import EventDetailHeader from "../components/EventDetailHeader";
+import { ArtistLinks } from "../components/ArtistLinks";
 import { EmptyState } from "../components/EmptyState";
 import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
@@ -148,14 +149,15 @@ export default function EventDetailScreen() {
   }
 
   const venueName = event.venueName || "Venue to be announced";
-  const location = `${venueName} · ${event.city}, ${event.countryCode}`;
+  const region = [event.city, event.province, event.country ?? event.countryCode].filter((value): value is string => Boolean(value?.trim()));
+  const location = `${venueName} · ${region.join(", ")}`;
   const formattedDate = formatEventSchedule(event);
 
   const openNightForm = () => {
     router.push({
       pathname: "/night/new",
       params: {
-        sourceEventId: event.id,
+        sourceEventId: event.sourceEventId ?? event.id,
         eventName: event.title,
         date: event.date,
         venueName,
@@ -272,13 +274,7 @@ export default function EventDetailScreen() {
         <Text style={styles.sectionTitle}>About this event</Text>
         <Text style={styles.notes}>{event.description}</Text>
         <Text style={styles.sectionTitle}>Artist lineup</Text>
-        <View style={styles.tagRow}>
-          {event.artists.map((artist) => (
-            <View key={artist} style={styles.tag}>
-              <Text style={styles.tagText}>{artist}</Text>
-            </View>
-          ))}
-        </View>
+        <ArtistLinks names={event.artists} />
         <View style={styles.detailRow}>
           <Ionicons name="location-outline" size={18} color={colors.secondary} />
           <Text style={styles.detailText}>{location}</Text>
@@ -291,7 +287,7 @@ export default function EventDetailScreen() {
         ) : null}
         <View style={styles.detailRow}>
           <Ionicons name="time-outline" size={18} color={colors.secondary} />
-          <Text style={styles.detailText}>{event.startTime} to {event.endTime} {event.timezone}</Text>
+          <Text style={styles.detailText}>{event.endTime ? `${event.startTime} to ${event.endTime}` : event.startTime}{event.timezone ? ` ${event.timezone}` : ""}</Text>
         </View>
         {event.ageRestriction ? (
           <View style={styles.detailRow}>

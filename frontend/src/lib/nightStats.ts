@@ -1,4 +1,5 @@
 import type { CurrencyCode, Night } from "../types/Night";
+import type { EventEntry } from "../types/event";
 
 export type NightChartItem = {
   label: string;
@@ -105,7 +106,7 @@ function chartItems(counts: NameCount[]): NightChartItem[] {
 function monthKey(dateValue: string): string | null {
   const match = /^(\d{4})-(\d{2})-\d{2}$/.exec(dateValue);
   if (!match) return null;
-  const parsedDate = new Date(`${dateValue}T12:00:00`);
+  const parsedDate = new Date(`${dateValue}T12:00:00Z`);
   if (Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== dateValue) return null;
   return `${match[1]}-${match[2]}`;
 }
@@ -236,4 +237,56 @@ export function getNightStats(nights: Night[], now = new Date()): NightStatsResu
   const currentYear = String(now.getFullYear());
   const selectedYear = years.includes(currentYear) ? currentYear : (years[0] ?? null);
   return { years, stats: calculateNightStats(nights, selectedYear, now) };
+}
+
+export type ProfileMilestone = {
+  category: string;
+  achieved: number[];
+  current: number;
+  next: number | null;
+};
+
+export function calculateProfileStats(nights: Night[], events: EventEntry[] = [], now = new Date()) {
+  const stats = calculateNightStats(nights, null, now);
+  const orderedNights = [...nights].sort((first, second) => first.date.localeCompare(second.date));
+  const years = [...new Set(nights.map((night) => night.date.slice(0, 4)).filter((year) => /^\d{4}$/.test(year)))].sort((first, second) => second.localeCompare(first));
+  const yearCounts = new Map<string, number>();
+  const monthCounts = new Map<string, number>();
+  for (const night of nights) {
+    const month = monthKey(night.date);
+    if (!month) continue;
+    const year = month.slice(0, 4);
+    yearCounts.set(year, (yearCounts.get(year) ?? 0) + 1);
+    monthCounts.set(month, (monthCounts.get(month) ?? 0) + 1);
+  }
+  const busiest = (counts: Map<string, number>) => [...counts.entries()].sort((first, second) => second[1] - first[1] || second[0].localeCompare(first[0]))[0] ?? null;
+  const topArtists = stats.artistsByFrequency.slice(0, 5).map((artist) => ({
+    ...artist,
+    mostRecentDate: nights.filter((night) => night.artistsSeen.some((name) => normalizedName(name) === normalizedName(artist.label)))
+      .reduce<string | null>((latest, night) => latest === null || night.date > latest ? night.date : latest, null),
+  }));
+  const eventById = new Map(events.map((event) => [event.id, event]));
+  const linkedNights = nights.filter((night) => night.sourceEventId && eventById.has(night.sourceEventId));
+  const genres = countNightNameLists(linkedNights, (night) => eventById.get(night.sourceEventId ?? "")?.genres ?? []);
+  const thresholds = [
+    { category: "Nights", current: stats.totalNights, levels: [10, 25, 50, 100] },
+    { category: "Cities", current: stats.uniqueCities, levels: [5, 10] },
+    { category: "Artists", current: stats.uniqueArtists, levels: [10, 25, 50, 100] },
+    { category: "Venues", current: stats.uniqueVenues, levels: [5, 10, 25] },
+  ];
+  const milestones: ProfileMilestone[] = thresholds.map(({ category, current, levels }) => ({
+    category, current, achieved: levels.filter((level) => current >= level), next: levels.find((level) => current < level) ?? null,
+  }));
+  return {
+    stats,
+    years,
+    firstNightDate: orderedNights[0]?.date ?? null,
+    mostRecentNightDate: orderedNights[orderedNights.length - 1]?.date ?? null,
+    mostActiveYear: busiest(yearCounts),
+    mostActiveMonth: busiest(monthCounts),
+    topArtists,
+    topGenres: chartItems(genres).slice(0, 5),
+    linkedGenreNightCount: linkedNights.length,
+    milestones,
+  };
 }
