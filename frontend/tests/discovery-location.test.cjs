@@ -39,10 +39,12 @@ const { groupDiscoveryEvents, filterDiscoveryEvents, filterElectronicDiscoveryEv
 const {
   DEFAULT_DISCOVERY_LOCATION,
   DEFAULT_DISCOVERY_RADIUS_KM,
+  DISCOVERY_RADIUS_OPTIONS,
   allDiscoveryLocationsLabel,
   discoveryEventsQuery,
   discoveryLocationFromCity,
   discoveryLocationToQuery,
+  isSameDiscoveryLocation,
   loadDiscoveryLocation,
 } = loadTypeScript("src/lib/discoveryLocation.ts");
 const { getHomeRecommendations } = loadTypeScript("src/lib/homeRecommendations.ts");
@@ -67,6 +69,26 @@ test("loads the saved location or defaults and labels all locations by country",
   assert.equal(allDiscoveryLocationsLabel(), "All of Canada");
 });
 
+test("all locations label falls back when Intl.DisplayNames is unavailable", () => {
+  const displayNamesDescriptor = Object.getOwnPropertyDescriptor(Intl, "DisplayNames");
+  const originalCountryCode = DEFAULT_DISCOVERY_LOCATION.countryCode;
+  try {
+    Object.defineProperty(Intl, "DisplayNames", {
+      configurable: true,
+      value: class {
+        constructor() { throw new Error("Unsupported"); }
+      },
+    });
+    assert.equal(allDiscoveryLocationsLabel(), "All of Canada");
+    DEFAULT_DISCOVERY_LOCATION.countryCode = "ZZ";
+    assert.equal(allDiscoveryLocationsLabel(), "All of ZZ");
+  } finally {
+    DEFAULT_DISCOVERY_LOCATION.countryCode = originalCountryCode;
+    if (displayNamesDescriptor) Object.defineProperty(Intl, "DisplayNames", displayNamesDescriptor);
+    else delete Intl.DisplayNames;
+  }
+});
+
 test("v1 city preference migrates to v2 and preserves its city", async () => {
   stored.set("raveorb.preferences.v1", JSON.stringify({ discoveryCity: "London", futureSetting: "keep" }));
   const preferences = await preferencesStorage.get();
@@ -83,6 +105,60 @@ test("concurrent location changes are serialized", async () => {
   const ottawa = discoveryLocationFromCity("Ottawa");
   await Promise.all([preferencesStorage.setDiscoveryLocation(montreal), preferencesStorage.setDiscoveryLocation(ottawa)]);
   assert.equal((await preferencesStorage.get()).discoveryLocation.city, "Ottawa");
+});
+
+test("saved preference fields validate independently and retain valid fields", async () => {
+  const montreal = discoveryLocationFromCity("Montreal");
+  stored.set("raveorb.preferences.v2", JSON.stringify({
+    savedLocations: [montreal],
+    favouriteCategories: ["Techno", "Trance"],
+    radiusKm: 75,
+    defaultDateRange: "invalid",
+  }));
+  const preferences = await preferencesStorage.get();
+  assert.deepEqual(preferences.savedLocations, [montreal]);
+  assert.deepEqual(preferences.favouriteCategories, ["Techno", "Trance"]);
+  assert.equal(preferences.radiusKm, DEFAULT_DISCOVERY_RADIUS_KM);
+  assert.equal(preferences.defaultDateRange, "all-upcoming");
+
+  stored.set("raveorb.preferences.v2", JSON.stringify({
+    savedLocations: [montreal, { city: "", label: "bad", countryCode: "CA" }],
+    favouriteCategories: ["House"],
+    radiusKm: 100,
+    defaultDateRange: "weekend",
+  }));
+  const independentlyRecovered = await preferencesStorage.get();
+  assert.deepEqual(independentlyRecovered.savedLocations, []);
+  assert.deepEqual(independentlyRecovered.favouriteCategories, ["House"]);
+  assert.equal(independentlyRecovered.radiusKm, 100);
+  assert.equal(independentlyRecovered.defaultDateRange, "weekend");
+});
+
+test("saved locations compare city, region and country case-insensitively", async () => {
+  const ottawaOntario = { label: "Ottawa, Ontario", city: "Ottawa", region: "Ontario", countryCode: "CA" };
+  const ottawaIllinois = { label: "Ottawa, Illinois", city: "Ottawa", region: "Illinois", countryCode: "US" };
+  const sameOttawa = { label: "OTTAWA", city: "OTTAWA", region: "ONTARIO", countryCode: "ca" };
+  assert.equal(isSameDiscoveryLocation(ottawaOntario, sameOttawa), true);
+  assert.equal(isSameDiscoveryLocation(ottawaOntario, ottawaIllinois), false);
+  await preferencesStorage.setSavedLocations([ottawaOntario, ottawaIllinois]);
+  assert.deepEqual((await preferencesStorage.get()).savedLocations, [ottawaOntario, ottawaIllinois]);
+  await assert.rejects(preferencesStorage.setSavedLocations([ottawaOntario, sameOttawa]));
+  const sixCities = Array.from({ length: 6 }, (_, index) => ({ label: `City ${index}`, city: `City ${index}`, countryCode: "CA" }));
+  await assert.rejects(preferencesStorage.setSavedLocations(sixCities));
+});
+
+test("saved preference setters retain concurrent updates and reject invalid values", async () => {
+  await Promise.all([
+    preferencesStorage.setRadiusKm(25),
+    preferencesStorage.setFavouriteCategories(["House", "Techno"]),
+    preferencesStorage.setDefaultDateRange("weekend"),
+  ]);
+  const preferences = await preferencesStorage.get();
+  assert.equal(preferences.radiusKm, 25);
+  assert.deepEqual(preferences.favouriteCategories, ["House", "Techno"]);
+  assert.equal(preferences.defaultDateRange, "weekend");
+  assert.deepEqual(DISCOVERY_RADIUS_OPTIONS, [10, 25, 50, 100]);
+  await assert.rejects(preferencesStorage.setFavouriteCategories(["not-a-style"]));
 });
 
 test("invalid preferences and storage errors do not overwrite existing data", async () => {
@@ -112,6 +188,7 @@ test("coordinate locations query a radius and retain nearby towns in discovery r
     ...query,
     city: DEFAULT_DISCOVERY_LOCATION.city,
   });
+  assert.equal(discoveryLocationToQuery(DEFAULT_DISCOVERY_LOCATION, 25).radius, 25);
 
   const now = new Date(2026, 10, 10, 12);
   const events = ["Toronto", "Mississauga"].map((city) => ({ city, date: "2026-11-11", type: "club", genres: [], title: "Night", venueName: "Venue", artists: [] }));
@@ -166,6 +243,7 @@ test("RaveOrb style filters expand House and Techno families without mixing Bass
   assert.deepEqual(filterElectronicDiscoveryEvents(events, "", "Techno").map((event) => event.id), ["melodic"]);
   assert.deepEqual(filterElectronicDiscoveryEvents(events, "", "Drum & Bass").map((event) => event.id), ["drum-bass"]);
   assert.deepEqual(filterElectronicDiscoveryEvents(events, "", "Bass").map((event) => event.id), ["dubstep"]);
+  assert.deepEqual(filterElectronicDiscoveryEvents(events, "", "favourites", ["Deep House", "Drum & Bass"]).map((event) => event.id), ["deep", "drum-bass"]);
 });
 
 test("Home selects local candidates while retaining cross-city listening history", () => {
@@ -179,4 +257,15 @@ test("Home selects local candidates while retaining cross-city listening history
   assert.deepEqual(local.map((item) => item.event.id), ["local"]);
   assert.match(local[0].reason, /techno/);
   assert.equal(getHomeRecommendations([], events, {}, now, 3, null).length, 2);
+});
+
+test("Home recommendations rank favourite styles and explain the match", () => {
+  const now = new Date(2026, 10, 10, 12);
+  const events = [
+    { id: "ordinary", city: "Toronto", venueName: "Venue", date: "2026-11-11", startTime: "22:00", genres: [], artists: [], raveOrbCategory: "Other" },
+    { id: "favourite", city: "Toronto", venueName: "Venue", date: "2026-11-12", startTime: "22:00", genres: [], artists: [], raveOrbCategory: "Techno" },
+  ];
+  const recommendations = getHomeRecommendations([], events, {}, now, 3, "Toronto", ["Techno"]);
+  assert.deepEqual(recommendations.map((item) => item.event.id), ["favourite", "ordinary"]);
+  assert.match(recommendations[0].reason, /favourite styles/);
 });

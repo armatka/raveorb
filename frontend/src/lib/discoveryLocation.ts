@@ -4,6 +4,8 @@ import { eventsDataMode } from "../services/eventsRepository";
 const TORONTO = "Toronto";
 
 export const DEFAULT_DISCOVERY_RADIUS_KM = 50;
+export const DISCOVERY_RADIUS_OPTIONS = [10, 25, 50, 100] as const;
+export type DiscoveryRadiusKm = (typeof DISCOVERY_RADIUS_OPTIONS)[number];
 
 export const DEFAULT_DISCOVERY_LOCATION: DiscoveryLocation = {
   label: TORONTO,
@@ -70,12 +72,15 @@ export type DiscoveryLocationQuery = {
   unit?: "km";
 };
 
-export function discoveryLocationToQuery(location: DiscoveryLocation | null): DiscoveryLocationQuery {
+export function discoveryLocationToQuery(
+  location: DiscoveryLocation | null,
+  radiusKm: DiscoveryRadiusKm = DEFAULT_DISCOVERY_RADIUS_KM,
+): DiscoveryLocationQuery {
   if (!location) return { countryCode: DEFAULT_DISCOVERY_LOCATION.countryCode, unit: "km" };
   if (typeof location.latitude === "number" && typeof location.longitude === "number") {
     return {
       latlong: `${location.latitude},${location.longitude}`,
-      radius: DEFAULT_DISCOVERY_RADIUS_KM,
+      radius: radiusKm,
       unit: "km",
     };
   }
@@ -88,16 +93,47 @@ export async function loadDiscoveryLocation(): Promise<DiscoveryLocation | null>
   return preferences.discoveryLocationConfigured ? preferences.discoveryLocation : DEFAULT_DISCOVERY_LOCATION;
 }
 
-export function discoveryEventsQuery(location: DiscoveryLocation | null) {
+export function discoveryEventsQuery(
+  location: DiscoveryLocation | null,
+  radiusKm: DiscoveryRadiusKm = DEFAULT_DISCOVERY_RADIUS_KM,
+) {
   return {
-    ...discoveryLocationToQuery(location),
+    ...discoveryLocationToQuery(location, radiusKm),
     ...(eventsDataMode === "mock" && location ? { city: location.city } : {}),
   };
 }
 
+export function isSameDiscoveryLocation(first: DiscoveryLocation, second: DiscoveryLocation): boolean {
+  const normalize = (value: string | undefined) => value?.trim().toLocaleLowerCase() ?? "";
+  return normalize(first.city) === normalize(second.city)
+    && normalize(first.region) === normalize(second.region)
+    && normalize(first.countryCode) === normalize(second.countryCode);
+}
+
+export async function loadDiscoverySettings() {
+  const { preferencesStorage } = await import("./preferencesStorage");
+  const preferences = await preferencesStorage.get();
+  return {
+    ...preferences,
+    location: preferences.discoveryLocation,
+  };
+}
+
 export function allDiscoveryLocationsLabel(): string {
-  const countryName = new Intl.DisplayNames(["en"], { type: "region" }).of(DEFAULT_DISCOVERY_LOCATION.countryCode);
-  return `All of ${countryName ?? DEFAULT_DISCOVERY_LOCATION.countryCode}`;
+  const countryCode = DEFAULT_DISCOVERY_LOCATION.countryCode;
+  const fallbackNames: Record<string, string> = {
+    CA: "Canada",
+    US: "United States",
+    GB: "United Kingdom",
+    DE: "Germany",
+  };
+  let countryName: string | undefined;
+  try {
+    countryName = new Intl.DisplayNames(["en"], { type: "region" }).of(countryCode);
+  } catch {
+    countryName = undefined;
+  }
+  return `All of ${countryName ?? fallbackNames[countryCode] ?? countryCode}`;
 }
 
 export function discoveryLocationFromCity(cityInput: string, fallbackCountryCode = DEFAULT_DISCOVERY_LOCATION.countryCode): DiscoveryLocation {

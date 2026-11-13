@@ -1,15 +1,28 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { DEFAULT_DISCOVERY_LOCATION } from "./discoveryLocation";
-import type { DiscoveryLocation } from "../types/event";
+import {
+  DEFAULT_DISCOVERY_LOCATION,
+  DEFAULT_DISCOVERY_RADIUS_KM,
+  DISCOVERY_RADIUS_OPTIONS,
+  isSameDiscoveryLocation,
+  type DiscoveryRadiusKm,
+} from "./discoveryLocation";
+import type { DiscoveryDateRange } from "./eventDiscovery";
+import { raveOrbCategories, type DiscoveryLocation, type RaveOrbCategory } from "../types/event";
 
 export type AppPreferences = {
   discoveryLocation: DiscoveryLocation | null;
   discoveryLocationConfigured: boolean;
+  savedLocations: DiscoveryLocation[];
+  favouriteCategories: RaveOrbCategory[];
+  radiusKm: DiscoveryRadiusKm;
+  defaultDateRange: DiscoveryDateRange;
 };
 
 const STORAGE_KEY = "raveorb.preferences.v2";
 const LEGACY_STORAGE_KEY = "raveorb.preferences.v1";
+const DEFAULT_DATE_RANGE: DiscoveryDateRange = "all-upcoming";
+const DISCOVERY_DATE_RANGES: DiscoveryDateRange[] = ["tonight", "weekend", "next-7-days", "next-30-days", "all-upcoming"];
 let writeQueue: Promise<void> = Promise.resolve();
 
 function parsePreferences(stored: string): Record<string, unknown> {
@@ -42,6 +55,24 @@ function isDiscoveryLocation(value: unknown): value is DiscoveryLocation {
     && (location.longitude === undefined || (typeof location.longitude === "number" && Number.isFinite(location.longitude)));
 }
 
+function isSavedLocations(value: unknown): value is DiscoveryLocation[] {
+  return Array.isArray(value) && value.length <= 5 && value.every(isDiscoveryLocation)
+    && value.every((location, index) => !value.slice(0, index).some((previous) => isSameDiscoveryLocation(previous, location)));
+}
+
+function isFavouriteCategories(value: unknown): value is RaveOrbCategory[] {
+  return Array.isArray(value) && value.every((category) => raveOrbCategories.includes(category as RaveOrbCategory))
+    && new Set(value).size === value.length;
+}
+
+function isRadiusKm(value: unknown): value is DiscoveryRadiusKm {
+  return typeof value === "number" && DISCOVERY_RADIUS_OPTIONS.includes(value as DiscoveryRadiusKm);
+}
+
+function isDateRange(value: unknown): value is DiscoveryDateRange {
+  return typeof value === "string" && DISCOVERY_DATE_RANGES.includes(value as DiscoveryDateRange);
+}
+
 async function readPreferences(): Promise<Record<string, unknown>> {
   const stored = await AsyncStorage.getItem(STORAGE_KEY);
   if (stored !== null) return parsePreferences(stored);
@@ -71,16 +102,44 @@ export const preferencesStorage = {
     return {
       discoveryLocation: isDiscoveryLocation(stored.discoveryLocation) ? stored.discoveryLocation : null,
       discoveryLocationConfigured: Object.prototype.hasOwnProperty.call(stored, "discoveryLocation"),
+      savedLocations: isSavedLocations(stored.savedLocations) ? stored.savedLocations : [],
+      favouriteCategories: isFavouriteCategories(stored.favouriteCategories) ? stored.favouriteCategories : [],
+      radiusKm: isRadiusKm(stored.radiusKm) ? stored.radiusKm : DEFAULT_DISCOVERY_RADIUS_KM,
+      defaultDateRange: isDateRange(stored.defaultDateRange) ? stored.defaultDateRange : DEFAULT_DATE_RANGE,
     };
   },
 
   async setDiscoveryLocation(location: DiscoveryLocation | null): Promise<void> {
     if (location !== null && !isDiscoveryLocation(location)) throw new Error("Discovery location is invalid.");
-    const write = writeQueue.then(async () => {
-      const current = await readPreferences();
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, discoveryLocation: location }));
-    });
-    writeQueue = write.catch(() => undefined);
-    return write;
+    return updatePreferences({ discoveryLocation: location });
+  },
+
+  async setSavedLocations(locations: DiscoveryLocation[]): Promise<void> {
+    if (!isSavedLocations(locations)) throw new Error("Saved locations are invalid.");
+    return updatePreferences({ savedLocations: locations });
+  },
+
+  async setFavouriteCategories(categories: RaveOrbCategory[]): Promise<void> {
+    if (!isFavouriteCategories(categories)) throw new Error("Favourite styles are invalid.");
+    return updatePreferences({ favouriteCategories: categories });
+  },
+
+  async setRadiusKm(radiusKm: DiscoveryRadiusKm): Promise<void> {
+    if (!isRadiusKm(radiusKm)) throw new Error("Discovery radius is invalid.");
+    return updatePreferences({ radiusKm });
+  },
+
+  async setDefaultDateRange(defaultDateRange: DiscoveryDateRange): Promise<void> {
+    if (!isDateRange(defaultDateRange)) throw new Error("Default date range is invalid.");
+    return updatePreferences({ defaultDateRange });
   },
 };
+
+function updatePreferences(updates: Record<string, unknown>): Promise<void> {
+  const write = writeQueue.then(async () => {
+    const current = await readPreferences();
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...updates }));
+  });
+  writeQueue = write.catch(() => undefined);
+  return write;
+}
