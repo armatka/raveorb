@@ -28,3 +28,9 @@ test("omits electronicOnly for general event searches", () => {
   const params = new URLSearchParams(serializeEventsQuery({ keyword: "any event", size: 20 }));
   assert.equal(params.has("electronicOnly"), false);
 });
+
+test("does not inject a country code when none is provided", () => {
+  const params = new URLSearchParams(serializeEventsQuery({ city: "Paris" }));
+  assert.equal(params.get("city"), "Paris");
+  assert.equal(params.has("countryCode"), false);
+});

@@ -9,6 +9,7 @@ import { openFriend } from "../components/FriendLinks";
 import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { formatEventDate } from "../lib/eventFormatting";
+import { discoveryEventsQuery, loadDiscoveryLocation } from "../lib/discoveryLocation";
 import { formatCurrency } from "../lib/formatCurrency";
 import { goBackOrReplace } from "../lib/navigation";
 import { calculateNightStats, calculateProfileStats } from "../lib/nightStats";
@@ -43,7 +44,9 @@ export default function MyRaveOrbScreen() {
       setLoading(false);
       if (!items.some((night) => night.sourceEventId)) return;
       setEventsLoading(true);
-      eventsRepository.listEvents().then((result) => { if (active) setEvents(result); })
+      loadDiscoveryLocation()
+        .then((location) => eventsRepository.listEvents(discoveryEventsQuery(location)))
+        .then((result) => { if (active) setEvents(result); })
         .catch(() => { if (active) setEventsError(true); })
         .finally(() => { if (active) setEventsLoading(false); });
     }).catch(() => { if (active) { setJournalError(true); setLoading(false); } });

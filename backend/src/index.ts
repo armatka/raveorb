@@ -5,6 +5,7 @@ import express, { type ErrorRequestHandler, type Response } from "express";
 
 import { events, venues } from "./data/mockData.js";
 import { getStats } from "./services/stats.js";
+import { GeocodingError, GeocodingQueryError, searchCities } from "./services/geocoding.js";
 import { getTicketmasterEvent, parseTicketmasterQuery, searchTicketmasterEvents, TicketmasterError, TicketmasterQueryError } from "./services/ticketmaster.js";
 
 const app = express();
@@ -15,6 +16,23 @@ app.use(express.json());
 
 app.get("/api/health", (_req, res: Response) => {
   res.json({ status: "ok", service: "raveorb-backend" });
+});
+
+app.get("/api/locations/search", async (req, res: Response) => {
+  if (typeof req.query.q !== "string") {
+    return res.status(400).json({ error: "Enter a city name between 2 and 80 characters." });
+  }
+  try {
+    return res.json(await searchCities(req.query.q));
+  } catch (error) {
+    if (error instanceof GeocodingQueryError) return res.status(400).json({ error: error.message });
+    if (error instanceof GeocodingError) {
+      console.error("City search request failed", { kind: error.kind });
+      return res.status(502).json({ error: error.message });
+    }
+    console.error("City search request failed", { kind: "internal" });
+    return res.status(500).json({ error: "City search is temporarily unavailable. Please try again." });
+  }
 });
 
 app.get("/api/events", async (req, res: Response) => {

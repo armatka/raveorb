@@ -102,3 +102,21 @@ export interface Venue {
   visits: number;
   favoriteGenre: string;
 }
+
+export type DiscoveryLocation = {
+  label: string;
+  city: string;
+  region?: string;
+  countryCode: string;
+  latitude?: number;
+  longitude?: number;
+  timezone?: string;
+};
+
+export type CitySearchResult = DiscoveryLocation & {
+  id: string;
+  country?: string;
+  latitude: number;
+  longitude: number;
+  population?: number;
+};

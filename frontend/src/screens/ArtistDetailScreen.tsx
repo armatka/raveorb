@@ -10,6 +10,7 @@ import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { getArtistHistory, getArtistUpcomingEvents, resolveArtist } from "../lib/artistResolver";
 import { localDateKey } from "../lib/eventDiscovery";
+import { DEFAULT_DISCOVERY_LOCATION, discoveryEventsQuery, loadDiscoveryLocation } from "../lib/discoveryLocation";
 import { formatEventDate } from "../lib/eventFormatting";
 import { goBackOrReplace } from "../lib/navigation";
 import { nightsStorage } from "../lib/nightsStorage";
@@ -32,12 +33,21 @@ export default function ArtistDetailScreen() {
   useFocusEffect(useCallback(() => {
     let active = true;
     setLoading(true);
-    Promise.allSettled([eventsRepository.listEvents(), nightsStorage.list()]).then(([eventResult, nightResult]) => {
+    Promise.allSettled([loadDiscoveryLocation(), nightsStorage.list()]).then(async ([locationResult, nightResult]) => {
       if (!active) return;
-      setEvents(eventResult.status === "fulfilled" ? eventResult.value : []);
       setNights(nightResult.status === "fulfilled" ? nightResult.value : []);
-      setEventError(eventResult.status === "rejected");
       setNightError(nightResult.status === "rejected");
+      const location = locationResult.status === "fulfilled" ? locationResult.value : DEFAULT_DISCOVERY_LOCATION;
+      try {
+        const result = await eventsRepository.listEvents(discoveryEventsQuery(location));
+        if (!active) return;
+        setEvents(result);
+        setEventError(false);
+      } catch {
+        if (!active) return;
+        setEvents([]);
+        setEventError(true);
+      }
       setLoading(false);
     });
     return () => { active = false; };
