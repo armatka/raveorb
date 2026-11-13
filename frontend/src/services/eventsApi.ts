@@ -13,6 +13,7 @@ export type EventsApiQuery = {
   page?: number;
   size?: number;
   sort?: string;
+  electronicOnly?: boolean;
 };
 
 export class EventsApiError extends Error {
@@ -71,7 +72,7 @@ export async function requestEventsApi(path: string): Promise<{ payload: unknown
 
 export function serializeEventsQuery(query: EventsApiQuery): string {
   const params = new URLSearchParams();
-  for (const key of ["keyword", "city", "countryCode", "postalCode", "latlong", "radius", "unit", "classificationName", "genreId", "startDateTime", "endDateTime", "page", "size", "sort"] as const) {
+  for (const key of ["keyword", "city", "countryCode", "postalCode", "latlong", "radius", "unit", "classificationName", "genreId", "startDateTime", "endDateTime", "page", "size", "sort", "electronicOnly"] as const) {
     const value = query[key];
     if (value !== undefined && String(value).trim()) params.set(key, String(value).trim());
   }

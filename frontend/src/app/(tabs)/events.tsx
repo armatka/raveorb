@@ -18,10 +18,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { EventListItem } from "../../components/EventListItem";
 import { Screen } from "../../components/Screen";
 import {
+  filterElectronicDiscoveryEvents,
   filterDiscoveryEvents,
   groupDiscoveryEvents,
   type DiscoveryDateRange,
-  type DiscoveryTypeFilter,
+  type ElectronicDiscoveryCategory,
   type EventSection,
 } from "../../lib/eventDiscovery";
 import { eventStatusStorage, type EventStatus } from "../../lib/eventStatusStorage";
@@ -32,12 +33,25 @@ import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
 import type { EventEntry } from "../../types/event";
 
-const eventTypeOptions: Array<{ label: string; value: DiscoveryTypeFilter }> = [
+const primaryCategoryOptions: Array<{ label: string; value: ElectronicDiscoveryCategory }> = [
   { label: "All", value: "all" },
-  { label: "Rave", value: "rave" },
-  { label: "Club", value: "club" },
-  { label: "Festival", value: "festival" },
-  { label: "Concert", value: "concert" },
+  { label: "House", value: "House" },
+  { label: "Techno", value: "Techno" },
+  { label: "Trance", value: "Trance" },
+  { label: "Drum & Bass", value: "Drum & Bass" },
+  { label: "Bass", value: "Bass" },
+  { label: "Festivals", value: "festivals" },
+];
+
+const secondaryCategoryOptions: Array<{ label: string; value: ElectronicDiscoveryCategory }> = [
+  { label: "Tech House", value: "Tech House" },
+  { label: "Deep House", value: "Deep House" },
+  { label: "Minimal / Deep Tech", value: "Minimal / Deep Tech" },
+  { label: "Hard Techno", value: "Hard Techno" },
+  { label: "Melodic House & Techno", value: "Melodic House & Techno" },
+  { label: "Progressive", value: "Progressive" },
+  { label: "Garage", value: "Garage" },
+  { label: "EDM", value: "EDM" },
 ];
 
 const dateRangeOptions: Array<{ label: string; value: DiscoveryDateRange }> = [
@@ -58,8 +72,8 @@ export default function EventsScreen() {
   const [locationSearch, setLocationSearch] = useState("");
   const [savingLocation, setSavingLocation] = useState(false);
   const [locationError, setLocationError] = useState(false);
-  const [genres, setGenres] = useState<string[]>([]);
-  const [type, setType] = useState<DiscoveryTypeFilter>("all");
+  const [selectedCategory, setSelectedCategory] = useState<ElectronicDiscoveryCategory>("all");
+  const [showMoreCategories, setShowMoreCategories] = useState(false);
   const [dateRange, setDateRange] = useState<DiscoveryDateRange>("all-upcoming");
   const [now, setNow] = useState(() => new Date());
   const [statuses, setStatuses] = useState<Record<string, EventStatus>>({});
@@ -113,8 +127,9 @@ export default function EventsScreen() {
         countryCode: "CA",
         classificationName: "Music",
         search: debouncedQuery || undefined,
+        ...(!debouncedQuery ? { electronicOnly: true } : {}),
         page: 0,
-        size: 20,
+        size: debouncedQuery ? 20 : 50,
         sort: "date,asc",
         unit: "km",
       }).then((result) => {
@@ -138,22 +153,18 @@ export default function EventsScreen() {
     () => [...new Set([...events.map((event) => event.city).filter(Boolean), ...(city ? [city] : [])])].sort((first, second) => first.localeCompare(second)),
     [city, events],
   );
-  const genreOptions = useMemo(
-    () => [...new Set(events.flatMap((event) => event.genres))].sort((first, second) => first.localeCompare(second)),
-    [events],
-  );
-  const visibleEvents = useMemo(
-    () => filterDiscoveryEvents(events, query, { city, genres, type, dateRange }, now),
-    [city, dateRange, events, genres, now, query, type],
-  );
+  const visibleEvents = useMemo(() => {
+    const filtered = filterDiscoveryEvents(events, query, { city, genres: [], type: "all", dateRange }, now);
+    return filterElectronicDiscoveryEvents(filtered, query, selectedCategory);
+  }, [city, dateRange, events, now, query, selectedCategory]);
   const sections = useMemo(() => groupDiscoveryEvents(visibleEvents, now), [now, visibleEvents]);
-  const isFiltered = Boolean(query.trim()) || genres.length > 0 || type !== "all" || dateRange !== "all-upcoming";
+  const isFiltered = Boolean(query.trim()) || selectedCategory !== "all" || dateRange !== "all-upcoming";
   const hasMore = eventsDataMode === "api" && page + 1 < totalPages;
 
   const clearAll = () => {
     setQuery("");
-    setGenres([]);
-    setType("all");
+    setSelectedCategory("all");
+    setShowMoreCategories(false);
     setDateRange("all-upcoming");
   };
 
@@ -188,8 +199,9 @@ export default function EventsScreen() {
         countryCode: "CA",
         classificationName: "Music",
         search: debouncedQuery || undefined,
+        ...(!debouncedQuery ? { electronicOnly: true } : {}),
         page: nextPage,
-        size: 20,
+        size: debouncedQuery ? 20 : 50,
         sort: "date,asc",
         unit: "km",
       });
@@ -204,10 +216,6 @@ export default function EventsScreen() {
     } finally {
       setLoadingMore(false);
     }
-  };
-
-  const removeGenre = (genre: string) => {
-    setGenres((current) => current.filter((item) => item !== genre));
   };
 
   const updateEventStatus = async (eventId: string, nextStatus: EventStatus | null) => {
@@ -264,14 +272,12 @@ export default function EventsScreen() {
           </Pressable>
         ) : null}
       </View>
-      <FilterRail
-        label="GENRE"
-        options={genreOptions.map((item) => ({ label: item, value: item }))}
-        selectedValues={genres}
-        onSelect={(value) => setGenres((current) => current.includes(value) ? current.filter((item) => item !== value) : [...current, value])}
-        multiSelect
-      />
-      <FilterRail label="EVENT TYPE" options={eventTypeOptions} selectedValues={[type]} onSelect={(value) => setType(value as DiscoveryTypeFilter)} />
+      <FilterRail label="RAVEORB STYLES" options={primaryCategoryOptions} selectedValues={[selectedCategory]} onSelect={(value) => setSelectedCategory(value as ElectronicDiscoveryCategory)} />
+      <Pressable onPress={() => setShowMoreCategories((visible) => !visible)} style={styles.moreStylesButton} accessibilityRole="button" accessibilityState={{ expanded: showMoreCategories }} accessibilityLabel={showMoreCategories ? "Hide more music styles" : "Show more music styles"}>
+        <Text style={styles.moreStylesText}>{showMoreCategories ? "Fewer styles" : "More styles"}</Text>
+        <Ionicons name={showMoreCategories ? "chevron-up" : "chevron-down"} size={16} color={colors.secondary} />
+      </Pressable>
+      {showMoreCategories ? <FilterRail label="MORE STYLES" options={secondaryCategoryOptions} selectedValues={[selectedCategory]} onSelect={(value) => setSelectedCategory(value as ElectronicDiscoveryCategory)} /> : null}
       <FilterRail label="WHEN" options={dateRangeOptions} selectedValues={[dateRange]} onSelect={(value) => setDateRange(value as DiscoveryDateRange)} />
       <View style={styles.resultsRow}>
         <Text style={styles.resultCount}>{visibleEvents.length} {visibleEvents.length === 1 ? "event" : "events"}</Text>
@@ -284,8 +290,7 @@ export default function EventsScreen() {
       {isFiltered ? (
         <View style={styles.activeFilters}>
           {query.trim() ? <ActiveFilter label={`Search: ${query.trim()}`} onRemove={() => setQuery("")} /> : null}
-          {genres.map((genre) => <ActiveFilter key={genre} label={genre} onRemove={() => removeGenre(genre)} />)}
-          {type !== "all" ? <ActiveFilter label={eventTypeOptions.find((option) => option.value === type)?.label ?? type} onRemove={() => setType("all")} /> : null}
+          {selectedCategory !== "all" ? <ActiveFilter label={primaryCategoryOptions.concat(secondaryCategoryOptions).find((option) => option.value === selectedCategory)?.label ?? selectedCategory} onRemove={() => setSelectedCategory("all")} /> : null}
           {dateRange !== "all-upcoming" ? <ActiveFilter label={dateRangeOptions.find((option) => option.value === dateRange)?.label ?? dateRange} onRemove={() => setDateRange("all-upcoming")} /> : null}
         </View>
       ) : null}
@@ -440,6 +445,8 @@ const styles = StyleSheet.create({
   locationOption: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: colors.border },
   locationOptionText: { color: colors.text, fontSize: 15 },
   locationSearch: { minHeight: 48, color: colors.text, fontSize: 14, paddingHorizontal: spacing.md, marginBottom: spacing.sm, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, borderRadius: 8 },
+  moreStylesButton: { minHeight: 40, flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: spacing.xs, paddingHorizontal: spacing.xs },
+  moreStylesText: { color: colors.secondary, fontSize: 12, fontWeight: "700" },
   searchBox: { minHeight: 50, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 10, marginBottom: spacing.md },
   searchInput: { flex: 1, minHeight: 48, color: colors.text, fontSize: 14 },
   clearSearch: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },

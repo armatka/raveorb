@@ -24,6 +24,15 @@ test("maps Ticketmaster events to the shared event contract", () => {
   assert.equal(event.date, "2030-06-14");
   assert.equal(event.startTime, "21:30");
   assert.equal(event.province, "Ontario");
+  assert.equal(event.segment, "Music");
+  assert.equal(event.genre, "Electronic");
+  assert.equal(event.subgenre, "House");
+  assert.deepEqual(event.classifications, [{ genre: { name: "Electronic" }, subGenre: { name: "House" }, segment: { name: "Music" } }]);
+  assert.equal(event.raveOrbCategory, "House");
+  assert.equal(event.raveOrbSubgenre, "House");
+  assert.ok(event.electronicScore && event.electronicScore >= 60);
+  assert.equal(event.isElectronic, true);
+  assert.equal(event.isFestival, false);
   assert.deepEqual(event.artists, ["DJ Example"]);
   assert.deepEqual(event.genres, ["Electronic", "House"]);
   assert.equal(event.priceMin, 25);
@@ -41,6 +50,34 @@ test("validates Discovery query values and date ranges", () => {
   assert.throws(() => parseTicketmasterQuery({ startDate: "2030-02-30" }), TicketmasterQueryError);
   assert.throws(() => parseTicketmasterQuery({ startDate: "2030-06-02", endDate: "2030-06-01" }), TicketmasterQueryError);
   assert.throws(() => parseTicketmasterQuery({ apiKey: "should-not-be-forwarded" }), TicketmasterQueryError);
+});
+
+test("electronicOnly filters events after classification", async () => {
+  const priorKey = process.env.TICKETMASTER_API_KEY;
+  const priorFetch = globalThis.fetch;
+  try {
+    process.env.TICKETMASTER_API_KEY = "test-credential-not-real";
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      _page: { number: 0, size: 20, totalPages: 1, totalElements: 2 },
+      _embedded: {
+        events: [
+          { id: "electronic-only-techno", name: "Techno Night", dates: { start: { localDate: "2030-06-14" } }, classifications: [{ genre: { name: "Techno" } }] },
+          { id: "electronic-only-rock", name: "Rock Night", dates: { start: { localDate: "2030-06-15" } }, classifications: [{ genre: { name: "Rock" } }] },
+        ],
+      },
+    }), { status: 200 });
+
+    const filters = parseTicketmasterQuery({ keyword: "electronic-only filter test", electronicOnly: "true" });
+    const result = await searchTicketmasterEvents(filters);
+
+    assert.equal(filters.electronicOnly, true);
+    assert.deepEqual(result.events.map((event) => event.id), ["electronic-only-techno"]);
+    assert.equal(result.events[0].isElectronic, true);
+  } finally {
+    globalThis.fetch = priorFetch;
+    if (priorKey === undefined) delete process.env.TICKETMASTER_API_KEY;
+    else process.env.TICKETMASTER_API_KEY = priorKey;
+  }
 });
 
 test("returns sanitized errors for upstream failures", async () => {

@@ -25,7 +25,7 @@ function loadTypeScript(relativePath) {
 }
 
 const { preferencesStorage } = loadTypeScript("src/lib/preferencesStorage.ts");
-const { groupDiscoveryEvents, filterDiscoveryEvents } = loadTypeScript("src/lib/eventDiscovery.ts");
+const { groupDiscoveryEvents, filterDiscoveryEvents, filterElectronicDiscoveryEvents } = loadTypeScript("src/lib/eventDiscovery.ts");
 const { getHomeRecommendations } = loadTypeScript("src/lib/homeRecommendations.ts");
 
 test.beforeEach(() => { stored = null; storageError = false; });
@@ -67,6 +67,38 @@ test("search remains within the selected city", () => {
   const filters = { city: "Toronto", genres: [], type: "all", dateRange: "all-upcoming" };
   assert.deepEqual(filterDiscoveryEvents(events, "artist", filters, now).map((event) => event.city), ["Toronto"]);
   assert.equal(filterDiscoveryEvents(events, "artist", { ...filters, city: null }, now).length, 2);
+});
+
+test("electronic discovery applies the threshold unless searching and sorts by date before relevance", () => {
+  const events = [
+    { id: "house", title: "House artist", date: "2026-11-14", startTime: "22:00", electronicScore: 95, raveOrbCategory: "House", isFestival: false },
+    { id: "techno-high", title: "Hard techno", date: "2026-11-13", startTime: "23:00", electronicScore: 96, raveOrbCategory: "Hard Techno", isFestival: false },
+    { id: "techno-edge", title: "Techno", date: "2026-11-13", startTime: "21:00", electronicScore: 60, raveOrbCategory: "Techno", isFestival: false },
+    { id: "below", title: "Low Artist", date: "2026-11-12", startTime: "20:00", electronicScore: 59, raveOrbCategory: "Other", isFestival: false },
+    { id: "festival", title: "House Festival", date: "2026-11-15", startTime: "17:00", electronicScore: 90, raveOrbCategory: "House", isFestival: true },
+  ];
+  const all = filterElectronicDiscoveryEvents(events, "");
+  assert.deepEqual(all.map((event) => event.id), ["techno-high", "techno-edge", "house", "festival"]);
+  assert.deepEqual(filterElectronicDiscoveryEvents(events, "", "House").map((event) => event.id), ["house", "festival"]);
+  assert.deepEqual(filterElectronicDiscoveryEvents(events, "", "festivals").map((event) => event.id), ["festival"]);
+
+  const now = new Date(2026, 10, 12, 12);
+  const searchEvents = events.map((event) => ({ ...event, city: "Toronto", venueName: "Venue", artists: [], genres: [] }));
+  const dateMatches = filterDiscoveryEvents(searchEvents, "Low Artist", { city: null, genres: [], type: "all", dateRange: "all-upcoming" }, now);
+  assert.deepEqual(filterElectronicDiscoveryEvents(dateMatches, "Low Artist").map((event) => event.id), ["below"]);
+});
+
+test("RaveOrb style filters expand House and Techno families without mixing Bass categories", () => {
+  const events = [
+    { id: "deep", date: "2026-11-20", startTime: "20:00", electronicScore: 90, raveOrbCategory: "Deep House" },
+    { id: "melodic", date: "2026-11-20", startTime: "21:00", electronicScore: 90, raveOrbCategory: "Melodic House & Techno" },
+    { id: "drum-bass", date: "2026-11-20", startTime: "22:00", electronicScore: 90, raveOrbCategory: "Drum & Bass" },
+    { id: "dubstep", date: "2026-11-20", startTime: "23:00", electronicScore: 90, raveOrbCategory: "Dubstep / Bass" },
+  ];
+  assert.deepEqual(filterElectronicDiscoveryEvents(events, "", "House").map((event) => event.id), ["deep", "melodic"]);
+  assert.deepEqual(filterElectronicDiscoveryEvents(events, "", "Techno").map((event) => event.id), ["melodic"]);
+  assert.deepEqual(filterElectronicDiscoveryEvents(events, "", "Drum & Bass").map((event) => event.id), ["drum-bass"]);
+  assert.deepEqual(filterElectronicDiscoveryEvents(events, "", "Bass").map((event) => event.id), ["dubstep"]);
 });
 
 test("Home selects local candidates while retaining cross-city listening history", () => {

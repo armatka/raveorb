@@ -260,7 +260,7 @@ export default function EventDetailScreen() {
       </View>
 
       <View style={styles.panel}>
-        <Text style={styles.sectionTitle}>Genres</Text>
+        <Text style={styles.sectionTitle}>{event.source === "ticketmaster" ? "Ticketmaster genres" : "Event genres"}</Text>
         <View style={styles.tagRow}>
           {event.genres.map((genre) => (
             <View key={genre} style={styles.tag}>
@@ -269,6 +269,36 @@ export default function EventDetailScreen() {
           ))}
         </View>
       </View>
+
+      <View style={styles.panel}>
+        <Text style={styles.sectionTitle}>RaveOrb classification</Text>
+        <View style={styles.classificationRow}>
+          <View style={styles.classificationBadge}>
+            <Text style={styles.classificationBadgeText}>{event.raveOrbCategory ?? "Unclassified"}</Text>
+          </View>
+          {event.raveOrbSubgenre && event.raveOrbSubgenre !== event.raveOrbCategory ? (
+            <Text style={styles.classificationSubgenre}>{event.raveOrbSubgenre}</Text>
+          ) : null}
+          {event.isFestival ? <Text style={styles.festivalLabel}>Festival</Text> : null}
+        </View>
+        {__DEV__ && event.electronicScore !== undefined ? (
+          <View style={styles.classificationDebug}>
+            <Text style={styles.debugText}>Electronic relevance: {event.electronicScore}/100</Text>
+            {event.matchedTerms?.length ? <Text style={styles.debugText}>Matched: {event.matchedTerms.join(", ")}</Text> : null}
+            {event.classificationReasons?.map((reason, index) => <Text key={`${reason}-${index}`} style={styles.debugText}>{reason}</Text>)}
+          </View>
+        ) : null}
+      </View>
+
+      {event.source === "ticketmaster" ? (
+        <View style={styles.panel}>
+          <Text style={styles.sectionTitle}>Ticketmaster source</Text>
+          {event.segment ? <Text style={styles.sourceClassification}>Segment: {event.segment}</Text> : null}
+          {event.genre ? <Text style={styles.sourceClassification}>Genre: {event.genre}</Text> : null}
+          {event.subgenre ? <Text style={styles.sourceClassification}>Subgenre: {event.subgenre}</Text> : null}
+          {!event.segment && !event.genre && !event.subgenre ? <Text style={styles.sourceClassification}>No source classification supplied.</Text> : null}
+        </View>
+      ) : null}
 
       <View style={styles.panel}>
         <Text style={styles.sectionTitle}>About this event</Text>
@@ -406,6 +436,14 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     marginBottom: spacing.md,
   },
+  classificationRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: spacing.sm },
+  classificationBadge: { maxWidth: "100%", minHeight: 34, justifyContent: "center", paddingHorizontal: spacing.md, borderRadius: 6, backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.primary },
+  classificationBadgeText: { color: colors.secondary, fontSize: 12, fontWeight: "800" },
+  classificationSubgenre: { color: colors.textSecondary, fontSize: 13, flexShrink: 1 },
+  festivalLabel: { color: colors.primary, fontSize: 11, fontWeight: "800", textTransform: "uppercase" },
+  classificationDebug: { gap: 3, marginTop: spacing.md, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
+  debugText: { color: colors.muted, fontSize: 11, lineHeight: 16 },
+  sourceClassification: { color: colors.textSecondary, fontSize: 13, lineHeight: 20, marginBottom: spacing.xs },
   statRow: {
     flexDirection: "row",
     gap: spacing.sm,

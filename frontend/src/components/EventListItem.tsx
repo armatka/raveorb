@@ -55,7 +55,12 @@ export function EventListItem({ event, status, onStatusChange }: EventListItemPr
       <View style={styles.cardContent}>
         <View style={styles.row}>
           <Text style={styles.title} numberOfLines={2}>{event.title}</Text>
-          <Text style={styles.type}>{event.type}</Text>
+          <View style={styles.classificationBadges}>
+            <View style={styles.categoryBadge}>
+              <Text style={styles.categoryBadgeText} numberOfLines={1}>{event.raveOrbCategory ?? "Other"}</Text>
+            </View>
+            {event.isFestival ? <Text style={styles.festivalBadge}>FESTIVAL</Text> : null}
+          </View>
         </View>
         <Text style={styles.meta} numberOfLines={1}>{event.venueName}</Text>
         <Text style={styles.meta} numberOfLines={1}>{event.city}, {event.countryCode} · {formatEventSchedule(event)}</Text>
@@ -139,13 +144,10 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     flex: 1,
   },
-  type: {
-    color: colors.secondary,
-    fontSize: 11,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    fontWeight: "700",
-  },
+  classificationBadges: { alignItems: "flex-end", gap: 3, flexShrink: 0 },
+  categoryBadge: { maxWidth: 112, minHeight: 24, justifyContent: "center", paddingHorizontal: spacing.xs, borderRadius: 5, backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.border },
+  categoryBadgeText: { maxWidth: 100, color: colors.secondary, fontSize: 9, fontWeight: "800", textTransform: "uppercase" },
+  festivalBadge: { color: colors.primary, fontSize: 8, fontWeight: "800" },
   meta: {
     color: colors.muted,
     fontSize: 13,
