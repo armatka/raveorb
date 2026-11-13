@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { mapTicketmasterEvent, parseTicketmasterQuery, searchTicketmasterEvents, TicketmasterError, TicketmasterQueryError } from "../src/services/ticketmaster.js";
+import { mapTicketmasterEvent } from "../src/providers/ticketmaster/mapping.js";
+import { getEventById, parseEventSearchQuery as parseTicketmasterQuery, searchEvents as searchTicketmasterEvents, ProviderError as TicketmasterError, EventQueryError as TicketmasterQueryError } from "../src/services/events.js";
 
 test("maps Ticketmaster events to the shared event contract", () => {
   const event = mapTicketmasterEvent({
@@ -28,11 +29,6 @@ test("maps Ticketmaster events to the shared event contract", () => {
   assert.equal(event.genre, "Electronic");
   assert.equal(event.subgenre, "House");
   assert.deepEqual(event.classifications, [{ genre: { name: "Electronic" }, subGenre: { name: "House" }, segment: { name: "Music" } }]);
-  assert.equal(event.raveOrbCategory, "House");
-  assert.equal(event.raveOrbSubgenre, "House");
-  assert.ok(event.electronicScore && event.electronicScore >= 60);
-  assert.equal(event.isElectronic, true);
-  assert.equal(event.isFestival, false);
   assert.deepEqual(event.artists, ["DJ Example"]);
   assert.deepEqual(event.genres, ["Electronic", "House"]);
   assert.equal(event.priceMin, 25);
@@ -64,7 +60,7 @@ test("electronicOnly filters events after classification", async () => {
   try {
     process.env.TICKETMASTER_API_KEY = "test-credential-not-real";
     globalThis.fetch = async () => new Response(JSON.stringify({
-      _page: { number: 0, size: 20, totalPages: 1, totalElements: 2 },
+      page: { number: 0, size: 20, totalPages: 1, totalElements: 2 },
       _embedded: {
         events: [
           { id: "electronic-only-techno", name: "Techno Night", dates: { start: { localDate: "2030-06-14" } }, classifications: [{ genre: { name: "Techno" } }] },
@@ -79,6 +75,7 @@ test("electronicOnly filters events after classification", async () => {
     assert.equal(filters.electronicOnly, true);
     assert.deepEqual(result.events.map((event) => event.id), ["electronic-only-techno"]);
     assert.equal(result.events[0].isElectronic, true);
+    assert.equal(result.events[0].raveOrbCategory, "Techno");
   } finally {
     globalThis.fetch = priorFetch;
     if (priorKey === undefined) delete process.env.TICKETMASTER_API_KEY;
@@ -95,7 +92,7 @@ test("latlong searches work without countryCode and omit it upstream", async () 
     globalThis.fetch = async (input) => {
       requestUrl = new URL(String(input));
       return new Response(JSON.stringify({
-        _page: { number: 0, size: 20, totalPages: 1, totalElements: 0 },
+        page: { number: 0, size: 20, totalPages: 1, totalElements: 0 },
         _embedded: { events: [] },
       }), { status: 200 });
     };
@@ -105,6 +102,38 @@ test("latlong searches work without countryCode and omit it upstream", async () 
     assert.equal(requestUrl.searchParams.get("latlong"), "48.8566,2.3522");
     assert.equal(requestUrl.searchParams.get("radius"), "50");
     assert.equal(requestUrl.searchParams.has("countryCode"), false);
+  } finally {
+    globalThis.fetch = priorFetch;
+    if (priorKey === undefined) delete process.env.TICKETMASTER_API_KEY;
+    else process.env.TICKETMASTER_API_KEY = priorKey;
+  }
+});
+
+test("prefers page metadata, falls back to _page, and caps page counts by requested size", async () => {
+  const priorKey = process.env.TICKETMASTER_API_KEY;
+  const priorFetch = globalThis.fetch;
+  try {
+    process.env.TICKETMASTER_API_KEY = "test-credential-not-real";
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      const keyword = url.searchParams.get("keyword");
+      const metadata = { number: 2, size: 20, totalPages: 2000, totalElements: 6000 };
+      return new Response(JSON.stringify({
+        ...(keyword === "pagination-fallback" ? { _page: metadata } : { page: metadata, _page: { number: 9, totalPages: 1, totalElements: 1 } }),
+        _embedded: { events: [] },
+      }), { status: 200 });
+    };
+
+    for (const [size, expectedPages] of [[20, 50], [30, 34], [1, 1000]] as const) {
+      const result = await searchTicketmasterEvents(parseTicketmasterQuery({
+        keyword: `pagination-${size}`, countryCode: "US", size: String(size), page: "2",
+      }));
+      assert.deepEqual([result.page, result.totalPages, result.totalElements], [2, expectedPages, 6000]);
+      assert.ok((expectedPages - 1) * size < 1000);
+      assert.ok(expectedPages * size >= 1000);
+    }
+    const fallback = await searchTicketmasterEvents(parseTicketmasterQuery({ keyword: "pagination-fallback", countryCode: "US" }));
+    assert.deepEqual([fallback.page, fallback.totalPages, fallback.totalElements], [2, 50, 6000]);
   } finally {
     globalThis.fetch = priorFetch;
     if (priorKey === undefined) delete process.env.TICKETMASTER_API_KEY;
@@ -133,6 +162,51 @@ test("returns sanitized errors for upstream failures", async () => {
         && error.message === "Ticketmaster rate limit reached. Try again shortly."
         && !error.message.includes("test-credential-not-real"),
     );
+  } finally {
+    globalThis.fetch = priorFetch;
+    if (priorKey === undefined) delete process.env.TICKETMASTER_API_KEY;
+    else process.env.TICKETMASTER_API_KEY = priorKey;
+  }
+});
+
+test("preserves Ticketmaster options, legacy filters, and request-time configuration across cached results", async () => {
+  const priorKey = process.env.TICKETMASTER_API_KEY;
+  const priorFetch = globalThis.fetch;
+  const urls: URL[] = [];
+  try {
+    process.env.TICKETMASTER_API_KEY = "test-credential-not-real";
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      urls.push(url);
+      const entries = [
+        { id: "cache-house", name: "House Club", dates: { start: { localDate: "2030-06-15" } }, classifications: [{ genre: { name: "House" } }] },
+        { id: "cache-rock", name: "Rock Club", dates: { start: { localDate: "2030-06-16" } }, classifications: [{ genre: { name: "Rock" } }] },
+        { id: "cache-outside", name: "House Club", dates: { start: { localDate: "2030-07-01" } }, classifications: [{ genre: { name: "House" } }] },
+      ];
+      return new Response(JSON.stringify(url.pathname.endsWith("/events.json")
+        ? { page: { number: 0, size: 20, totalPages: 7, totalElements: 100 }, _embedded: { events: entries } }
+        : entries[0]), { status: 200 });
+    };
+    const filters = parseTicketmasterQuery({
+      keyword: "legacy filter cache", countryCode: "US", classificationName: "Dance", genreId: "123",
+      genre: "house", type: "club", startDate: "2030-06-01", endDate: "2030-06-30",
+      startDateTime: "2030-05-01T00:00:00Z", endDateTime: "2030-08-01T00:00:00Z",
+    });
+    const result = await searchTicketmasterEvents(filters);
+    assert.deepEqual(result.events.map((item) => item.id), ["cache-house"]);
+    assert.deepEqual([result.totalPages, result.totalElements], [7, 100]);
+    assert.equal(urls[0].searchParams.get("classificationName"), "Dance");
+    assert.equal(urls[0].searchParams.get("genreId"), "123");
+    assert.equal(urls[0].searchParams.get("startDateTime"), "2030-05-01T00:00:00Z");
+    const unfiltered = await searchTicketmasterEvents({ ...filters, providerOptions: { ticketmaster: { classificationName: "Dance", genreId: "123" } }, localStartDate: undefined, localEndDate: undefined });
+    assert.equal(unfiltered.events.length, 3);
+    assert.equal(urls.length, 1);
+    assert.equal((await getEventById("cache-house"))?.isElectronic, true);
+    assert.equal(urls.length, 2);
+    delete process.env.TICKETMASTER_API_KEY;
+    await assert.rejects(searchTicketmasterEvents(filters), TicketmasterError);
+    await assert.rejects(getEventById("cache-house"), TicketmasterError);
+    assert.equal(urls.length, 2);
   } finally {
     globalThis.fetch = priorFetch;
     if (priorKey === undefined) delete process.env.TICKETMASTER_API_KEY;
