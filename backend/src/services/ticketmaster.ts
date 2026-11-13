@@ -1,4 +1,5 @@
-import type { EventEntry, EventType } from "../types/index.js";
+import type { EventEntry, EventType, TicketmasterClassification } from "../types/index.js";
+import { classifyElectronicEvent } from "./electronicClassification.js";
 
 const DISCOVERY_URL = "https://app.ticketmaster.com/discovery/v2/events.json";
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -15,14 +16,6 @@ type TicketmasterImage = {
   url?: string;
   width?: number;
   ratio?: string;
-};
-
-type TicketmasterClassification = {
-  segment?: { name?: string };
-  genre?: { name?: string };
-  subGenre?: { name?: string };
-  type?: { name?: string };
-  subType?: { name?: string };
 };
 
 type TicketmasterAttraction = { name?: string };
@@ -81,6 +74,7 @@ export type TicketmasterSearchFilters = {
   page: number;
   size: number;
   sort: string;
+  electronicOnly?: boolean;
   legacyGenre?: string;
   legacyType?: EventType;
   legacyStartDate?: string;
@@ -214,6 +208,20 @@ export function mapTicketmasterEvent(value: unknown): EventEntry | null {
   const countryCode = string(venueCountry.countryCode) ?? "";
   const latitude = number(venueLocation.latitude);
   const longitude = number(venueLocation.longitude);
+  const primaryClassification = classifications[0];
+  const segment = string(primaryClassification?.segment?.name);
+  const genre = string(primaryClassification?.genre?.name);
+  const subgenre = string(primaryClassification?.subGenre?.name);
+  const raveOrbClassification = classifyElectronicEvent({
+    title,
+    artists,
+    venueName: string(venue.name),
+    description: string(event.description) ?? string(event.info) ?? string(event.pleaseNote),
+    segment,
+    genre,
+    subgenre,
+    classifications,
+  });
 
   return {
     id,
@@ -223,6 +231,17 @@ export function mapTicketmasterEvent(value: unknown): EventEntry | null {
     venueName: string(venue.name) ?? "Venue to be announced",
     city: string(venueCity.name) ?? "",
     countryCode,
+    ...(segment ? { segment } : {}),
+    ...(genre ? { genre } : {}),
+    ...(subgenre ? { subgenre } : {}),
+    classifications,
+    raveOrbCategory: raveOrbClassification.category,
+    raveOrbSubgenre: raveOrbClassification.subgenre,
+    electronicScore: raveOrbClassification.electronicScore,
+    isElectronic: raveOrbClassification.isElectronic,
+    isFestival: raveOrbClassification.isFestival,
+    matchedTerms: raveOrbClassification.matchedTerms,
+    classificationReasons: raveOrbClassification.classificationReasons,
     ...(province ? { province } : {}),
     ...(country ? { country } : {}),
     ...(string(record(venue.address).line1) ? { address: string(record(venue.address).line1) } : {}),
@@ -277,7 +296,7 @@ function validateDateTime(value: string | undefined, key: string): string | unde
 const allowedQueryKeys = new Set([
   "keyword", "search", "city", "countryCode", "postalCode", "latlong", "radius", "unit",
   "classificationName", "genreId", "startDateTime", "endDateTime", "page", "size", "sort",
-  "genre", "type", "startDate", "endDate",
+  "genre", "type", "startDate", "endDate", "electronicOnly",
 ]);
 const validSorts = new Set(["date,asc", "date,desc", "name,asc", "name,desc", "relevance,desc", "distance,asc", "onSaleDate,asc"]);
 const validTypes = new Set<EventType>(["festival", "rave", "concert", "club"]);
@@ -313,6 +332,10 @@ export function parseTicketmasterQuery(query: Record<string, unknown>): Ticketma
   if (!validSorts.has(rawSort)) throw new TicketmasterQueryError("sort is not supported.");
   const rawType = singleQueryValue(query, "type");
   if (rawType && !validTypes.has(rawType as EventType)) throw new TicketmasterQueryError("type is not supported.");
+  const electronicOnlyText = singleQueryValue(query, "electronicOnly");
+  if (electronicOnlyText !== undefined && electronicOnlyText !== "true" && electronicOnlyText !== "false") {
+    throw new TicketmasterQueryError("electronicOnly must be true or false.");
+  }
   return {
     ...(keyword ? { keyword } : {}), ...(city ? { city } : {}), countryCode: rawCountryCode.toUpperCase(),
     ...(postalCode ? { postalCode } : {}), ...(latlong ? { latlong: latlong.replace(/\s/g, "") } : {}),
@@ -323,6 +346,7 @@ export function parseTicketmasterQuery(query: Record<string, unknown>): Ticketma
     page: integerQueryValue(singleQueryValue(query, "page"), "page", 0, 0, 100000),
     size: integerQueryValue(singleQueryValue(query, "size"), "size", 20, 1, 50),
     sort: rawSort,
+    ...(electronicOnlyText !== undefined ? { electronicOnly: electronicOnlyText === "true" } : {}),
     ...(singleQueryValue(query, "genre") ? { legacyGenre: singleQueryValue(query, "genre") } : {}),
     ...(rawType ? { legacyType: rawType as EventType } : {}),
     ...(startDate ? { legacyStartDate: startDate } : {}), ...(endDate ? { legacyEndDate: endDate } : {}),
@@ -330,7 +354,7 @@ export function parseTicketmasterQuery(query: Record<string, unknown>): Ticketma
 }
 
 function cacheKey(filters: TicketmasterSearchFilters): string {
-  return JSON.stringify(Object.entries(filters).filter(([key]) => !key.startsWith("legacy")).sort(([first], [second]) => first.localeCompare(second)));
+  return JSON.stringify(Object.entries(filters).filter(([key]) => !key.startsWith("legacy") && key !== "electronicOnly").sort(([first], [second]) => first.localeCompare(second)));
 }
 
 function isExpired(expiresAt: number): boolean { return expiresAt <= Date.now(); }
@@ -406,6 +430,7 @@ function buildUrl(filters: TicketmasterSearchFilters): URL {
 
 function applyLegacyFilters(page: TicketmasterPage, filters: TicketmasterSearchFilters): TicketmasterPage {
   const events = page.events.filter((event) => {
+    if (filters.electronicOnly && event.isElectronic !== true) return false;
     if (filters.legacyType && event.type !== filters.legacyType) return false;
     if (filters.legacyGenre && !event.genres.some((genre) => genre.toLowerCase() === filters.legacyGenre?.toLowerCase())) return false;
     if (filters.legacyStartDate && event.date < filters.legacyStartDate) return false;
@@ -419,7 +444,7 @@ export async function searchTicketmasterEvents(filters: TicketmasterSearchFilter
   assertApiKeyConfigured();
   const key = cacheKey(filters);
   const cached = searchCache.get(key);
-  if (cached && !isExpired(cached.expiresAt) && !filters.legacyType && !filters.legacyGenre && !filters.legacyStartDate && !filters.legacyEndDate) return { ...cached.value, events: [...cached.value.events] };
+  if (cached && !isExpired(cached.expiresAt) && !filters.electronicOnly && !filters.legacyType && !filters.legacyGenre && !filters.legacyStartDate && !filters.legacyEndDate) return { ...cached.value, events: [...cached.value.events] };
   if (cached) searchCache.delete(key);
   let upstreamPage: TicketmasterPage;
   if (cached && !isExpired(cached.expiresAt)) {

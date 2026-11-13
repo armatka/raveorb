@@ -1,6 +1,48 @@
 export type EventType = "festival" | "rave" | "concert" | "club";
 export type EventStatus = "scheduled" | "cancelled" | "postponed" | "sold-out";
 export type EventCurrency = string;
+export const raveOrbCategories = [
+  "House",
+  "Tech House",
+  "Deep House",
+  "Minimal / Deep Tech",
+  "Techno",
+  "Hard Techno",
+  "Melodic House & Techno",
+  "Trance",
+  "Progressive",
+  "Drum & Bass",
+  "Dubstep / Bass",
+  "Garage",
+  "EDM",
+  "Electronic",
+  "Festival",
+  "Other",
+] as const;
+export type RaveOrbCategory = (typeof raveOrbCategories)[number];
+
+export type TicketmasterClassificationValue = {
+  id?: string;
+  name?: string;
+};
+
+export type TicketmasterClassification = {
+  segment?: TicketmasterClassificationValue;
+  genre?: TicketmasterClassificationValue;
+  subGenre?: TicketmasterClassificationValue;
+  type?: TicketmasterClassificationValue;
+  subType?: TicketmasterClassificationValue;
+};
+
+export type ElectronicClassification = {
+  category: RaveOrbCategory;
+  subgenre: string | null;
+  electronicScore: number;
+  isElectronic: boolean;
+  matchedTerms: string[];
+  classificationReasons: string[];
+  isFestival: boolean;
+};
 
 export interface EventEntry {
   id: string;
@@ -10,6 +52,17 @@ export interface EventEntry {
   venueName: string;
   city: string;
   countryCode: string;
+  segment?: string;
+  genre?: string;
+  subgenre?: string;
+  classifications?: TicketmasterClassification[];
+  raveOrbCategory?: RaveOrbCategory;
+  raveOrbSubgenre?: string | null;
+  electronicScore?: number;
+  isElectronic?: boolean;
+  isFestival?: boolean;
+  matchedTerms?: string[];
+  classificationReasons?: string[];
   province?: string;
   country?: string;
   address?: string;

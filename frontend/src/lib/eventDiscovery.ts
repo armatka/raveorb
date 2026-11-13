@@ -1,8 +1,10 @@
-import type { EventEntry, EventType } from "../types/event";
+import type { EventEntry, EventType, RaveOrbCategory } from "../types/event";
 
 export type DiscoverySectionId = "tonight" | "weekend" | "next-7-days" | "upcoming";
 export type DiscoveryDateRange = "tonight" | "weekend" | "next-7-days" | "next-30-days" | "all-upcoming";
 export type DiscoveryTypeFilter = "all" | EventType;
+export type ElectronicDiscoveryCategory = "all" | "festivals" | "Bass" | RaveOrbCategory;
+export const ELECTRONIC_DISCOVERY_THRESHOLD = 60;
 
 export type DiscoveryFilters = {
   city: string | null;
@@ -16,6 +18,28 @@ export type EventSection = {
   title: string;
   data: EventEntry[];
 };
+
+function matchesElectronicCategory(event: EventEntry, selected: ElectronicDiscoveryCategory): boolean {
+  if (selected === "all") return true;
+  if (selected === "festivals") return event.isFestival === true;
+  if (selected === "Bass") return event.raveOrbCategory === "Dubstep / Bass";
+  if (selected === "House") return ["House", "Tech House", "Deep House", "Melodic House & Techno"].includes(event.raveOrbCategory ?? "");
+  if (selected === "Techno") return ["Techno", "Hard Techno", "Minimal / Deep Tech", "Melodic House & Techno"].includes(event.raveOrbCategory ?? "");
+  return event.raveOrbCategory === selected;
+}
+
+export function filterElectronicDiscoveryEvents(
+  events: EventEntry[],
+  query: string,
+  selected: ElectronicDiscoveryCategory = "all",
+): EventEntry[] {
+  const explicitSearch = query.trim().length > 0;
+  return events.filter((event) => (explicitSearch || (event.electronicScore ?? 0) >= ELECTRONIC_DISCOVERY_THRESHOLD)
+    && matchesElectronicCategory(event, selected))
+    .sort((first, second) => first.date.localeCompare(second.date)
+      || (second.electronicScore ?? 0) - (first.electronicScore ?? 0)
+      || first.startTime.localeCompare(second.startTime));
+}
 
 const sectionOrder: DiscoverySectionId[] = ["tonight", "weekend", "next-7-days", "upcoming"];
 const sectionTitles: Record<DiscoverySectionId, string> = {
@@ -140,6 +164,8 @@ export function groupDiscoveryEvents(events: EventEntry[], now = new Date()): Ev
     .map((id) => ({
       id,
       title: sectionTitles[id],
-      data: grouped[id].sort((first, second) => first.date.localeCompare(second.date) || first.startTime.localeCompare(second.startTime)),
+      data: grouped[id].sort((first, second) => first.date.localeCompare(second.date)
+        || (second.electronicScore ?? 0) - (first.electronicScore ?? 0)
+        || first.startTime.localeCompare(second.startTime)),
     }));
 }

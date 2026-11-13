@@ -1,5 +1,6 @@
 import { mockEvents, mockVenues } from "../data/mockData";
-import type { EventEntry, EventCurrency, EventStatus, EventType } from "../types/event";
+import type { EventEntry, EventCurrency, EventStatus, EventType, RaveOrbCategory } from "../types/event";
+import { raveOrbCategories } from "../types/event";
 import type { Venue } from "../types/venue";
 import { getEventsApiBaseUrl, hasEventsApi, readPageHeader, requestEventsApi, serializeEventsQuery, type EventsApiQuery } from "./eventsApi";
 
@@ -22,6 +23,7 @@ export type EventQueryFilters = {
   page?: number;
   size?: number;
   sort?: string;
+  electronicOnly?: boolean;
 };
 
 export type EventsDataMode = "api" | "mock";
@@ -51,6 +53,24 @@ function isEventStatus(value: unknown): value is EventStatus {
   return value === "scheduled" || value === "cancelled" || value === "postponed" || value === "sold-out";
 }
 
+function isRaveOrbCategory(value: unknown): value is RaveOrbCategory {
+  return typeof value === "string" && raveOrbCategories.some((category) => category === value);
+}
+
+function isOptionalStringArray(value: unknown): boolean {
+  return value === undefined || isStringArray(value);
+}
+
+function isTicketmasterClassification(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return ["segment", "genre", "subGenre", "type", "subType"].every((key) => {
+    const item = value[key];
+    return item === undefined || (isRecord(item)
+      && (item.id === undefined || typeof item.id === "string")
+      && (item.name === undefined || typeof item.name === "string"));
+  });
+}
+
 function isOptionalString(value: unknown): boolean {
   return value === undefined || typeof value === "string";
 }
@@ -68,6 +88,17 @@ function isEventEntry(value: unknown): value is EventEntry {
     && typeof value.venueName === "string"
     && typeof value.city === "string"
     && typeof value.countryCode === "string"
+    && isOptionalString(value.segment)
+    && isOptionalString(value.genre)
+    && isOptionalString(value.subgenre)
+    && (value.classifications === undefined || (Array.isArray(value.classifications) && value.classifications.every(isTicketmasterClassification)))
+    && (value.raveOrbCategory === undefined || isRaveOrbCategory(value.raveOrbCategory))
+    && (value.raveOrbSubgenre === undefined || value.raveOrbSubgenre === null || typeof value.raveOrbSubgenre === "string")
+    && (value.electronicScore === undefined || (typeof value.electronicScore === "number" && Number.isFinite(value.electronicScore) && value.electronicScore >= 0 && value.electronicScore <= 100))
+    && (value.isElectronic === undefined || typeof value.isElectronic === "boolean")
+    && (value.isFestival === undefined || typeof value.isFestival === "boolean")
+    && isOptionalStringArray(value.matchedTerms)
+    && isOptionalStringArray(value.classificationReasons)
     && isOptionalString(value.address)
     && isOptionalNumber(value.latitude)
     && isOptionalNumber(value.longitude)
@@ -197,6 +228,7 @@ function apiQuery(filters: EventQueryFilters): EventsApiQuery {
     page: filters.page ?? 0,
     size: filters.size ?? 20,
     sort: filters.sort ?? "date,asc",
+    electronicOnly: filters.electronicOnly,
   };
 }
 
