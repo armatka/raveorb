@@ -61,7 +61,17 @@ curl 'http://localhost:3000/api/events?keyword=house&city=Toronto&countryCode=CA
 curl 'http://localhost:3000/api/events/<ticketmaster-event-id>'
 ```
 
-The event list returns normalized event records and pagination metadata in `X-Page`, `X-Total-Pages`, and `X-Total-Elements` response headers. Common failures: a backend `500` with “not configured” means the backend key is missing; a `401` or `403` means Ticketmaster rejected the credential; a `429` means the provider rate limit was reached; a connection error usually means the API base URL is wrong or the phone cannot reach the computer. Check backend logs for the sanitized failure category, verify the key in the backend environment without pasting it into logs or chat, and retry after correcting configuration or network access.
+The event list returns normalized event records and pagination metadata in `X-Page`, `X-Total-Pages`, and `X-Total-Elements` response headers. `X-Total-Pages` is capped to Ticketmaster's accessible page range for the requested page size; `X-Total-Elements` remains the upstream total. Common failures: a backend `500` with “not configured” means the backend key is missing; a `401` or `403` means Ticketmaster rejected the credential; a `429` means the provider rate limit was reached; a connection error usually means the API base URL is wrong or the phone cannot reach the computer. Check backend logs for the sanitized failure category, verify the key in the backend environment without pasting it into logs or chat, and retry after correcting configuration or network access.
+
+## Event providers
+
+The backend's `src/providers/types.ts` defines the provider contract, `src/providers/registry.ts` registers adapters, and `src/services/events.ts` validates searches, classifies events, and coordinates providers. Ticketmaster's adapter and mapping live in `src/providers/ticketmaster/`. A partial search failure is reported by provider ID in the `X-Provider-Errors` header. When only one provider contributes events, its result order is preserved; events from multiple providers are concatenated and date-sorted. One successful provider retains its pagination; multiple successful pages use summed totals and the maximum page count. Cross-provider pagination and deduplication are not yet implemented.
+
+To add a provider:
+1. Implement `EventProvider`, mapping its results to `EventEntry` and reading credentials at request time.
+2. Set `source` to the provider ID, `sourceEventId` to the raw ID, and `id` to `<providerId>-<sourceEventId>`. Ticketmaster alone retains raw, unprefixed IDs for existing Nights and event statuses.
+3. Register the adapter in `src/providers/registry.ts`; declare and parse any provider-specific public query parameters in the adapter.
+4. Add adapter and service tests for mapping, configuration, routing, and failures.
 
 ## City Search
 
