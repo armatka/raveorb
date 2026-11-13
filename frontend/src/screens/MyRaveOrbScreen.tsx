@@ -9,7 +9,7 @@ import { openFriend } from "../components/FriendLinks";
 import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { formatEventDate } from "../lib/eventFormatting";
-import { discoveryEventsQuery, loadDiscoveryLocation } from "../lib/discoveryLocation";
+import { discoveryEventsQuery, loadDiscoverySettings } from "../lib/discoveryLocation";
 import { formatCurrency } from "../lib/formatCurrency";
 import { goBackOrReplace } from "../lib/navigation";
 import { calculateNightStats, calculateProfileStats } from "../lib/nightStats";
@@ -44,8 +44,8 @@ export default function MyRaveOrbScreen() {
       setLoading(false);
       if (!items.some((night) => night.sourceEventId)) return;
       setEventsLoading(true);
-      loadDiscoveryLocation()
-        .then((location) => eventsRepository.listEvents(discoveryEventsQuery(location)))
+      loadDiscoverySettings()
+        .then((preferences) => eventsRepository.listEvents(discoveryEventsQuery(preferences.location, preferences.radiusKm)))
         .then((result) => { if (active) setEvents(result); })
         .catch(() => { if (active) setEventsError(true); })
         .finally(() => { if (active) setEventsLoading(false); });
@@ -64,6 +64,7 @@ export default function MyRaveOrbScreen() {
       <ScreenHeader onBack={() => goBackOrReplace("/(tabs)")} />
       <Text style={styles.eyebrow}>MY RAVEORB</Text>
       <Text style={styles.title}>Your scene. Your history.</Text>
+      <InfoRow label="Preferences" value="Manage saved settings" onPress={() => router.push("/preferences")} accessibilityLabel="Open Preferences" />
       {loading ? <ActivityIndicator color={colors.primary} style={styles.loader} /> : journalError ? (
         <EmptyState title="Profile unavailable" message="Your journal could not be loaded." icon="alert-circle-outline" action={<Action label="Retry" icon="refresh" onPress={retry} />} />
       ) : nights.length === 0 ? (

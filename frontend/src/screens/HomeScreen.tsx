@@ -9,7 +9,7 @@ import Logo from "../components/Logo";
 import MetricCard from "../components/MetricCard";
 import RecommendationCard from "../components/RecommendationCard";
 import { Screen } from "../components/Screen";
-import { DEFAULT_DISCOVERY_LOCATION, discoveryEventsQuery, loadDiscoveryLocation } from "../lib/discoveryLocation";
+import { DEFAULT_DISCOVERY_LOCATION, discoveryEventsQuery, loadDiscoverySettings } from "../lib/discoveryLocation";
 import { formatEventSchedule } from "../lib/eventFormatting";
 import { eventStatusStorage, type EventStatus } from "../lib/eventStatusStorage";
 import { getHomeRecommendations } from "../lib/homeRecommendations";
@@ -20,6 +20,7 @@ import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
 import type { Night } from "../types/Night";
 import type { EventEntry } from "../types/event";
+import type { RaveOrbCategory } from "../types/event";
 
 export default function HomeScreen() {
   const [nights, setNights] = useState<Night[]>([]);
@@ -29,6 +30,7 @@ export default function HomeScreen() {
   const [loadError, setLoadError] = useState(false);
   const [eventLoadError, setEventLoadError] = useState<string | null>(null);
   const [discoveryCity, setDiscoveryCity] = useState<string | null>(null);
+  const [favouriteCategories, setFavouriteCategories] = useState<RaveOrbCategory[]>([]);
   const [locationError, setLocationError] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const [retryToken, setRetryToken] = useState(0);
@@ -39,8 +41,8 @@ export default function HomeScreen() {
       setLoading(true);
       setLoadError(false);
       setNow(new Date());
-      Promise.allSettled([nightsStorage.list(), eventStatusStorage.list(), loadDiscoveryLocation()])
-        .then(async ([nightResult, statusResult, locationResult]) => {
+      Promise.allSettled([nightsStorage.list(), eventStatusStorage.list(), loadDiscoverySettings()])
+        .then(async ([nightResult, statusResult, preferencesResult]) => {
           if (!isCurrent) return;
           if (nightResult.status === "fulfilled") {
             setNights(nightResult.value);
@@ -49,11 +51,15 @@ export default function HomeScreen() {
             setLoadError(true);
           }
           if (statusResult.status === "fulfilled") setStatuses(statusResult.value);
-          const discoveryLocation = locationResult.status === "fulfilled" ? locationResult.value : DEFAULT_DISCOVERY_LOCATION;
+          const preferences = preferencesResult.status === "fulfilled" ? preferencesResult.value : null;
+          const discoveryLocation = preferences === null
+            ? DEFAULT_DISCOVERY_LOCATION
+            : preferences.discoveryLocationConfigured ? preferences.location : DEFAULT_DISCOVERY_LOCATION;
           setDiscoveryCity(discoveryLocation?.city ?? null);
-          setLocationError(locationResult.status === "rejected");
+          setFavouriteCategories(preferences?.favouriteCategories ?? []);
+          setLocationError(preferencesResult.status === "rejected");
           try {
-            const result = await eventsRepository.listEvents(discoveryEventsQuery(discoveryLocation));
+            const result = await eventsRepository.listEvents(discoveryEventsQuery(discoveryLocation, preferences?.radiusKm));
             if (!isCurrent) return;
             setEvents(result);
             setEventLoadError(null);
@@ -72,7 +78,10 @@ export default function HomeScreen() {
   const currentYear = String(now.getFullYear());
   const allTimePulse = useMemo(() => calculateNightStats(nights, null, now), [nights, now]);
   const yearPulse = useMemo(() => calculateNightStats(nights, currentYear, now), [currentYear, nights, now]);
-  const recommendations = useMemo(() => getHomeRecommendations(nights, events, statuses, now, 3, discoveryCity), [discoveryCity, events, nights, now, statuses]);
+  const recommendations = useMemo(
+    () => getHomeRecommendations(nights, events, statuses, now, 3, discoveryCity, favouriteCategories),
+    [discoveryCity, events, favouriteCategories, nights, now, statuses],
+  );
   const hasJournalBasedRecommendations = recommendations.some((item) => item.reason !== "Upcoming event in Discovery");
   const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const nextEvent = useMemo(() => {

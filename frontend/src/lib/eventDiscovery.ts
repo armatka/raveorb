@@ -3,7 +3,7 @@ import type { EventEntry, EventType, RaveOrbCategory } from "../types/event";
 export type DiscoverySectionId = "tonight" | "weekend" | "next-7-days" | "upcoming";
 export type DiscoveryDateRange = "tonight" | "weekend" | "next-7-days" | "next-30-days" | "all-upcoming";
 export type DiscoveryTypeFilter = "all" | EventType;
-export type ElectronicDiscoveryCategory = "all" | "festivals" | "Bass" | RaveOrbCategory;
+export type ElectronicDiscoveryCategory = "all" | "festivals" | "favourites" | "Bass" | RaveOrbCategory;
 export const ELECTRONIC_DISCOVERY_THRESHOLD = 60;
 
 export type DiscoveryFilters = {
@@ -20,9 +20,14 @@ export type EventSection = {
   data: EventEntry[];
 };
 
-function matchesElectronicCategory(event: EventEntry, selected: ElectronicDiscoveryCategory): boolean {
+function matchesElectronicCategory(
+  event: EventEntry,
+  selected: ElectronicDiscoveryCategory,
+  favouriteCategories: RaveOrbCategory[],
+): boolean {
   if (selected === "all") return true;
   if (selected === "festivals") return event.isFestival === true;
+  if (selected === "favourites") return Boolean(event.raveOrbCategory && favouriteCategories.includes(event.raveOrbCategory));
   if (selected === "Bass") return event.raveOrbCategory === "Dubstep / Bass";
   if (selected === "House") return ["House", "Tech House", "Deep House", "Melodic House & Techno"].includes(event.raveOrbCategory ?? "");
   if (selected === "Techno") return ["Techno", "Hard Techno", "Minimal / Deep Tech", "Melodic House & Techno"].includes(event.raveOrbCategory ?? "");
@@ -33,10 +38,11 @@ export function filterElectronicDiscoveryEvents(
   events: EventEntry[],
   query: string,
   selected: ElectronicDiscoveryCategory = "all",
+  favouriteCategories: RaveOrbCategory[] = [],
 ): EventEntry[] {
   const explicitSearch = query.trim().length > 0;
   return events.filter((event) => (explicitSearch || (event.electronicScore ?? 0) >= ELECTRONIC_DISCOVERY_THRESHOLD)
-    && matchesElectronicCategory(event, selected))
+    && matchesElectronicCategory(event, selected, favouriteCategories))
     .sort((first, second) => first.date.localeCompare(second.date)
       || (second.electronicScore ?? 0) - (first.electronicScore ?? 0)
       || first.startTime.localeCompare(second.startTime));

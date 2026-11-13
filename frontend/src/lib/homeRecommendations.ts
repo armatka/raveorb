@@ -1,6 +1,7 @@
 import type { EventEntry } from "../types/event";
 import type { EventStatus } from "./eventStatusStorage";
 import type { Night } from "../types/Night";
+import type { RaveOrbCategory } from "../types/event";
 
 export type HomeRecommendation = {
   event: EventEntry;
@@ -27,6 +28,7 @@ export function getHomeRecommendations(
   now = new Date(),
   limit = 3,
   city: string | null = null,
+  favouriteCategories: RaveOrbCategory[] = [],
 ): HomeRecommendation[] {
   const eventById = new Map(events.map((event) => [event.id, event]));
   const attendedEventIds = new Set(
@@ -70,9 +72,11 @@ export function getHomeRecommendations(
       const matchedGenres = event.genres.filter((genre) => attendedGenres.has(normalize(genre)));
       const cityMatch = highlyRatedCities.has(normalize(event.city));
       const venueMatch = highlyRatedVenues.has(normalize(event.venueName));
-      const score = matchedGenres.length * 4 + (venueMatch ? 5 : 0) + (cityMatch ? 2 : 0);
+      const favouriteStyleMatch = Boolean(event.raveOrbCategory && favouriteCategories.includes(event.raveOrbCategory));
+      const score = matchedGenres.length * 4 + (venueMatch ? 5 : 0) + (cityMatch ? 2 : 0) + (favouriteStyleMatch ? 6 : 0);
       const reasonParts: string[] = [];
       if (matchedGenres.length > 0) reasonParts.push(`Genres you saw: ${matchedGenres.slice(0, 2).join(", ")}`);
+      if (favouriteStyleMatch) reasonParts.push("One of your favourite styles");
       if (venueMatch) reasonParts.push("A venue you rated highly");
       if (cityMatch) reasonParts.push("A city you explored");
 

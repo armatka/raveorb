@@ -10,7 +10,7 @@ import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { getArtistHistory, getArtistUpcomingEvents, resolveArtist } from "../lib/artistResolver";
 import { localDateKey } from "../lib/eventDiscovery";
-import { DEFAULT_DISCOVERY_LOCATION, discoveryEventsQuery, loadDiscoveryLocation } from "../lib/discoveryLocation";
+import { DEFAULT_DISCOVERY_LOCATION, discoveryEventsQuery, loadDiscoverySettings } from "../lib/discoveryLocation";
 import { formatEventDate } from "../lib/eventFormatting";
 import { goBackOrReplace } from "../lib/navigation";
 import { nightsStorage } from "../lib/nightsStorage";
@@ -33,13 +33,14 @@ export default function ArtistDetailScreen() {
   useFocusEffect(useCallback(() => {
     let active = true;
     setLoading(true);
-    Promise.allSettled([loadDiscoveryLocation(), nightsStorage.list()]).then(async ([locationResult, nightResult]) => {
+    Promise.allSettled([loadDiscoverySettings(), nightsStorage.list()]).then(async ([preferencesResult, nightResult]) => {
       if (!active) return;
       setNights(nightResult.status === "fulfilled" ? nightResult.value : []);
       setNightError(nightResult.status === "rejected");
-      const location = locationResult.status === "fulfilled" ? locationResult.value : DEFAULT_DISCOVERY_LOCATION;
+      const preferences = preferencesResult.status === "fulfilled" ? preferencesResult.value : null;
+      const location = preferences?.location ?? DEFAULT_DISCOVERY_LOCATION;
       try {
-        const result = await eventsRepository.listEvents(discoveryEventsQuery(location));
+        const result = await eventsRepository.listEvents(discoveryEventsQuery(location, preferences?.radiusKm));
         if (!active) return;
         setEvents(result);
         setEventError(false);

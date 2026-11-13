@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -32,10 +32,13 @@ import {
   discoveryEventsQuery,
   DEFAULT_DISCOVERY_LOCATION,
   DEFAULT_DISCOVERY_RADIUS_KM,
+  DISCOVERY_RADIUS_OPTIONS,
   discoveryLocationFromCity,
   hasDiscoveryCoordinates,
-  loadDiscoveryLocation,
+  isSameDiscoveryLocation,
+  loadDiscoverySettings,
   PRESET_DISCOVERY_LOCATIONS,
+  type DiscoveryRadiusKm,
 } from "../../lib/discoveryLocation";
 import { eventStatusStorage, type EventStatus } from "../../lib/eventStatusStorage";
 import { preferencesStorage } from "../../lib/preferencesStorage";
@@ -44,7 +47,7 @@ import { eventsDataMode, eventsRepository } from "../../services/eventsRepositor
 import { isLocationSearchQuery, searchLocations } from "../../services/locationsApi";
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
-import type { CitySearchResult, DiscoveryLocation, EventEntry } from "../../types/event";
+import type { CitySearchResult, DiscoveryLocation, EventEntry, RaveOrbCategory } from "../../types/event";
 
 const primaryCategoryOptions: Array<{ label: string; value: ElectronicDiscoveryCategory }> = [
   { label: "All", value: "all" },
@@ -91,6 +94,10 @@ export default function EventsScreen() {
   const [citySearchRetry, setCitySearchRetry] = useState(0);
   const [savingLocation, setSavingLocation] = useState(false);
   const [locationError, setLocationError] = useState(false);
+  const [savedLocations, setSavedLocations] = useState<DiscoveryLocation[]>([]);
+  const [favouriteCategories, setFavouriteCategories] = useState<RaveOrbCategory[]>([]);
+  const [radiusKm, setRadiusKm] = useState<DiscoveryRadiusKm>(DEFAULT_DISCOVERY_RADIUS_KM);
+  const [defaultDateRange, setDefaultDateRange] = useState<DiscoveryDateRange>("all-upcoming");
   const [selectedCategory, setSelectedCategory] = useState<ElectronicDiscoveryCategory>("all");
   const [showMoreCategories, setShowMoreCategories] = useState(false);
   const [dateRange, setDateRange] = useState<DiscoveryDateRange>("all-upcoming");
@@ -109,6 +116,17 @@ export default function EventsScreen() {
     const timer = setTimeout(() => setDebouncedQuery(query.trim()), 300);
     return () => clearTimeout(timer);
   }, [query]);
+
+  // Only react to an actual saved-default change; focus alone must preserve the temporary filter.
+  useEffect(() => {
+    setDateRange(defaultDateRange);
+  }, [defaultDateRange]);
+
+  useEffect(() => {
+    if (favouriteCategories.length === 0 && selectedCategory === "favourites") {
+      setSelectedCategory("all");
+    }
+  }, [favouriteCategories, selectedCategory]);
 
   useEffect(() => {
     const search = locationSearch.trim();
@@ -133,13 +151,20 @@ export default function EventsScreen() {
       let isCurrent = true;
       setNow(new Date());
       setLocationReady(false);
-      Promise.allSettled([eventStatusStorage.list(), loadDiscoveryLocation()])
-        .then(([statusResult, locationResult]) => {
+      Promise.allSettled([eventStatusStorage.list(), loadDiscoverySettings()])
+        .then(([statusResult, preferencesResult]) => {
           if (!isCurrent) return;
           if (statusResult.status === "fulfilled") setStatuses(statusResult.value);
           setStatusLoadError(statusResult.status === "rejected");
-          if (locationResult.status === "fulfilled") setLocation(locationResult.value);
-          setLocationError(locationResult.status === "rejected");
+          if (preferencesResult.status === "fulfilled") {
+            const preferences = preferencesResult.value;
+            setLocation(preferences.discoveryLocationConfigured ? preferences.discoveryLocation : DEFAULT_DISCOVERY_LOCATION);
+            setSavedLocations(preferences.savedLocations);
+            setFavouriteCategories(preferences.favouriteCategories);
+            setRadiusKm(preferences.radiusKm);
+            setDefaultDateRange(preferences.defaultDateRange);
+          }
+          setLocationError(preferencesResult.status === "rejected");
           setLocationReady(true);
         })
       return () => {
@@ -158,7 +183,7 @@ export default function EventsScreen() {
       setPage(0);
       setTotalPages(1);
       eventsRepository.listEventsPage({
-        ...discoveryEventsQuery(location),
+        ...discoveryEventsQuery(location, radiusKm),
         classificationName: "Music",
         search: debouncedQuery || undefined,
         ...(!debouncedQuery ? { electronicOnly: true } : {}),
@@ -180,7 +205,7 @@ export default function EventsScreen() {
         }
       });
       return () => { isCurrent = false; };
-    }, [debouncedQuery, location, locationReady, retryToken]),
+    }, [debouncedQuery, location, locationReady, radiusKm, retryToken]),
   );
 
   const visibleEvents = useMemo(() => {
@@ -191,8 +216,8 @@ export default function EventsScreen() {
       type: "all",
       dateRange,
     }, now);
-    return filterElectronicDiscoveryEvents(filtered, query, selectedCategory);
-  }, [dateRange, events, location, now, query, selectedCategory]);
+    return filterElectronicDiscoveryEvents(filtered, query, selectedCategory, favouriteCategories);
+  }, [dateRange, events, favouriteCategories, location, now, query, selectedCategory]);
   const sections = useMemo(() => groupDiscoveryEvents(visibleEvents, now), [now, visibleEvents]);
   const isFiltered = Boolean(query.trim()) || selectedCategory !== "all" || dateRange !== "all-upcoming";
   const hasMore = eventsDataMode === "api" && page + 1 < totalPages;
@@ -201,7 +226,7 @@ export default function EventsScreen() {
     setQuery("");
     setSelectedCategory("all");
     setShowMoreCategories(false);
-    setDateRange("all-upcoming");
+    setDateRange(defaultDateRange);
   };
 
   const refreshEvents = () => {
@@ -225,13 +250,34 @@ export default function EventsScreen() {
     }
   };
 
+  const saveCurrentLocation = async () => {
+    if (!location || isSavedLocation(location) || savedLocations.length >= 5) return;
+    const nextLocations = [...savedLocations, location];
+    try {
+      await preferencesStorage.setSavedLocations(nextLocations);
+      setSavedLocations(nextLocations);
+    } catch {
+      showAlert("Could not save city", "Your city was not saved. Please try again.");
+    }
+  };
+
+  const removeSavedLocation = async (removedLocation: DiscoveryLocation) => {
+    const nextLocations = savedLocations.filter((savedLocation) => !isSameDiscoveryLocation(savedLocation, removedLocation));
+    try {
+      await preferencesStorage.setSavedLocations(nextLocations);
+      setSavedLocations(nextLocations);
+    } catch {
+      showAlert("Could not remove city", "Your saved city was not removed. Please try again.");
+    }
+  };
+
   const loadMore = async () => {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
     try {
       const nextPage = page + 1;
       const result = await eventsRepository.listEventsPage({
-        ...discoveryEventsQuery(location),
+        ...discoveryEventsQuery(location, radiusKm),
         classificationName: "Music",
         search: debouncedQuery || undefined,
         ...(!debouncedQuery ? { electronicOnly: true } : {}),
@@ -269,22 +315,34 @@ export default function EventsScreen() {
   };
 
   const locationLabel = location
-    ? `${location.label}${hasDiscoveryCoordinates(location) ? ` · within ${DEFAULT_DISCOVERY_RADIUS_KM} km` : ""}`
+    ? `${location.label}${hasDiscoveryCoordinates(location) ? ` · within ${radiusKm} km` : ""}`
     : allDiscoveryLocationsLabel();
   const locationSearchValue = locationSearch.trim().toLocaleLowerCase();
   const searchingCities = eventsDataMode === "api" && Boolean(locationSearchValue);
   const citySearchLoading = citySearch.query !== locationSearch.trim() || citySearch.status === "loading";
-  const locationChoices = PRESET_DISCOVERY_LOCATIONS.filter((option) => option.label.toLocaleLowerCase().includes(locationSearchValue));
+  const isSavedLocation = (candidate: DiscoveryLocation) => savedLocations.some((savedLocation) => isSameDiscoveryLocation(savedLocation, candidate));
+  const locationChoices = PRESET_DISCOVERY_LOCATIONS.filter((option) => option.label.toLocaleLowerCase().includes(locationSearchValue) && !isSavedLocation(option));
+  const savedLocationChoices = savedLocations.filter((option) => option.label.toLocaleLowerCase().includes(locationSearchValue));
   const selectedIsPreset = location !== null && PRESET_DISCOVERY_LOCATIONS.some((option) => option.city === location.city && option.countryCode === location.countryCode);
-  const showSelectedCustomLocation = location !== null && !selectedIsPreset && location.label.toLocaleLowerCase().includes(locationSearchValue);
+  const showSelectedCustomLocation = location !== null && !selectedIsPreset && !isSavedLocation(location) && location.label.toLocaleLowerCase().includes(locationSearchValue);
   const hasLocationChoice = PRESET_DISCOVERY_LOCATIONS.some((option) => option.city.toLocaleLowerCase() === locationSearchValue)
     || (location !== null && location.city.toLocaleLowerCase() === locationSearchValue);
+  const discoveryCategoryOptions = favouriteCategories.length > 0
+    ? [{ label: "My styles", value: "favourites" as ElectronicDiscoveryCategory }, ...primaryCategoryOptions]
+    : primaryCategoryOptions;
 
   const listHeader = (
     <View style={styles.headerContent}>
       <View style={styles.titleBlock}>
-        <Text style={styles.eyebrow}>RAVEORB DISCOVERY</Text>
-        <Text style={styles.title}>Discover</Text>
+        <View style={styles.titleRow}>
+          <View style={styles.titleCopy}>
+            <Text style={styles.eyebrow}>RAVEORB DISCOVERY</Text>
+            <Text style={styles.title}>Discover</Text>
+          </View>
+          <Pressable onPress={() => router.push("/preferences")} style={styles.settingsButton} accessibilityRole="button" accessibilityLabel="Open preferences">
+            <Ionicons name="settings-outline" size={20} color={colors.secondary} />
+          </Pressable>
+        </View>
         <Pressable onPress={() => setLocationOpen(true)} disabled={loadingEvents || locationError} style={styles.locationButton} accessibilityRole="button" accessibilityLabel={`Discovery location: ${locationLabel}`} accessibilityHint="Choose a discovery location">
           <Ionicons name="location-outline" size={19} color={colors.secondary} />
           <Text style={styles.locationText} numberOfLines={1}>{locationLabel}</Text>
@@ -319,7 +377,7 @@ export default function EventsScreen() {
           </Pressable>
         ) : null}
       </View>
-      <FilterRail label="RAVEORB STYLES" options={primaryCategoryOptions} selectedValues={[selectedCategory]} onSelect={(value) => setSelectedCategory(value as ElectronicDiscoveryCategory)} />
+      <FilterRail label="RAVEORB STYLES" options={discoveryCategoryOptions} selectedValues={[selectedCategory]} onSelect={(value) => setSelectedCategory(value as ElectronicDiscoveryCategory)} />
       <Pressable onPress={() => setShowMoreCategories((visible) => !visible)} style={styles.moreStylesButton} accessibilityRole="button" accessibilityState={{ expanded: showMoreCategories }} accessibilityLabel={showMoreCategories ? "Hide more music styles" : "Show more music styles"}>
         <Text style={styles.moreStylesText}>{showMoreCategories ? "Fewer styles" : "More styles"}</Text>
         <Ionicons name={showMoreCategories ? "chevron-up" : "chevron-down"} size={16} color={colors.secondary} />
@@ -373,7 +431,10 @@ export default function EventsScreen() {
           <KeyboardAvoidingView behavior="padding" style={styles.sheetAvoider}>
             <View style={styles.locationSheet} accessibilityViewIsModal>
               <View style={styles.sheetHeader}>
-                <Text style={styles.sheetTitle}>Choose location</Text>
+                <View>
+                  <Text style={styles.sheetTitle}>Choose location</Text>
+                  <Text style={styles.sheetSubtitle}>Search radius · {radiusKm} km</Text>
+                </View>
                 <Pressable onPress={() => setLocationOpen(false)} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Close location selector">
                   <Ionicons name="close" size={22} color={colors.text} />
                 </Pressable>
@@ -388,6 +449,20 @@ export default function EventsScreen() {
                 accessibilityLabel="Search discovery city"
                 maxLength={80}
               />
+              {location ? (
+                <Pressable
+                  onPress={() => { void saveCurrentLocation(); }}
+                  disabled={isSavedLocation(location) || savedLocations.length >= 5}
+                  style={styles.saveCityButton}
+                  accessibilityRole="button"
+                  accessibilityLabel={isSavedLocation(location) ? `${location.label} is saved` : savedLocations.length >= 5 ? "Saved cities limit reached" : `Save ${location.label}`}
+                >
+                  <Ionicons name={isSavedLocation(location) ? "star" : "star-outline"} size={17} color={colors.primary} />
+                  <Text style={styles.saveCityText}>
+                    {isSavedLocation(location) ? "Saved city" : savedLocations.length >= 5 ? "Maximum 5 saved cities" : "Save city"}
+                  </Text>
+                </Pressable>
+              ) : null}
               <ScrollView keyboardShouldPersistTaps="handled">
                 {searchingCities ? (
                   !isLocationSearchQuery(locationSearch) ? (
@@ -416,12 +491,38 @@ export default function EventsScreen() {
                       </Pressable>
                     );
                   })
-                ) : [null, ...locationChoices, ...(showSelectedCustomLocation ? [location] : [])].map((option) => (
-                  <Pressable key={option?.city ?? "all-locations"} onPress={() => { void selectLocation(option); }} disabled={savingLocation} style={styles.locationOption} accessibilityRole="radio" accessibilityState={{ checked: location?.city === option?.city && location?.countryCode === option?.countryCode, disabled: savingLocation }} aria-checked={location?.city === option?.city && location?.countryCode === option?.countryCode} accessibilityLabel={option?.label ?? "All locations"}>
-                    <Text style={styles.locationOptionText}>{option?.label ?? "All locations"}</Text>
-                    {location?.city === option?.city && location?.countryCode === option?.countryCode ? <Ionicons name="checkmark" size={20} color={colors.primary} /> : null}
-                  </Pressable>
-                ))}
+                ) : (
+                  <>
+                    {savedLocationChoices.length > 0 ? (
+                      <View>
+                        <Text style={styles.locationSectionHeading}>YOUR CITIES</Text>
+                        {savedLocationChoices.map((option) => {
+                          const selected = location !== null && isSameDiscoveryLocation(location, option);
+                          return (
+                            <View key={`${option.city}-${option.region ?? ""}-${option.countryCode}`} style={styles.savedLocationRow}>
+                              <Pressable onPress={() => { void selectLocation(option); }} disabled={savingLocation} style={styles.savedLocationSelect} accessibilityRole="radio" accessibilityState={{ checked: selected, disabled: savingLocation }} aria-checked={selected} accessibilityLabel={option.label}>
+                                <View style={styles.savedLocationText}>
+                                  <Text style={styles.cityName}>{option.city}</Text>
+                                  <Text style={styles.cityRegion}>{[option.region, option.countryCode].filter(Boolean).join(", ")}</Text>
+                                </View>
+                                {selected ? <Ionicons name="checkmark" size={20} color={colors.primary} /> : null}
+                              </Pressable>
+                              <Pressable onPress={() => { void removeSavedLocation(option); }} style={styles.removeCityButton} accessibilityRole="button" accessibilityLabel={`Remove saved city ${option.label}`}>
+                                <Ionicons name="close" size={19} color={colors.muted} />
+                              </Pressable>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    ) : null}
+                    {[null, ...locationChoices, ...(showSelectedCustomLocation ? [location] : [])].map((option) => (
+                      <Pressable key={option ? `${option.city}-${option.region ?? ""}-${option.countryCode}` : "all-locations"} onPress={() => { void selectLocation(option); }} disabled={savingLocation} style={styles.locationOption} accessibilityRole="radio" accessibilityState={{ checked: location?.city === option?.city && location?.countryCode === option?.countryCode, disabled: savingLocation }} aria-checked={location?.city === option?.city && location?.countryCode === option?.countryCode} accessibilityLabel={option?.label ?? "All locations"}>
+                        <Text style={styles.locationOptionText}>{option?.label ?? "All locations"}</Text>
+                        {location?.city === option?.city && location?.countryCode === option?.countryCode ? <Ionicons name="checkmark" size={20} color={colors.primary} /> : null}
+                      </Pressable>
+                    ))}
+                  </>
+                )}
                 {eventsDataMode === "mock" && locationSearch.trim() && !hasLocationChoice ? (
                   <Pressable onPress={() => { void selectLocation(discoveryLocationFromCity(locationSearch, location?.countryCode ?? DEFAULT_DISCOVERY_LOCATION.countryCode)); }} disabled={savingLocation} style={styles.locationOption} accessibilityRole="button" accessibilityLabel={`Use city ${locationSearch.trim()}`}>
                     <Text style={styles.locationOptionText}>Use {locationSearch.trim()}</Text>
@@ -516,6 +617,9 @@ const styles = StyleSheet.create({
   content: { paddingBottom: spacing.xxl * 2, maxWidth: 900, width: "100%", alignSelf: "center" },
   headerContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.xl, paddingBottom: spacing.md },
   titleBlock: { marginBottom: spacing.lg },
+  titleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  titleCopy: { flex: 1 },
+  settingsButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   eyebrow: { color: colors.secondary, fontSize: 10, fontWeight: "700", letterSpacing: 1.5, marginBottom: spacing.xs },
   title: { color: colors.text, fontSize: 32, fontWeight: "700" },
   mockNotice: { color: colors.warning, fontSize: 10, fontWeight: "700", marginBottom: spacing.sm },
@@ -528,8 +632,14 @@ const styles = StyleSheet.create({
   locationSheet: { maxHeight: "75%", flexShrink: 1, backgroundColor: colors.surface, borderTopLeftRadius: 12, borderTopRightRadius: 12, paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
   sheetHeader: { minHeight: 60, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   sheetTitle: { color: colors.text, fontSize: 18, fontWeight: "700" },
+  sheetSubtitle: { color: colors.muted, fontSize: 11, marginTop: 2 },
   closeButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   locationOption: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: colors.border },
+  locationSectionHeading: { color: colors.secondary, fontSize: 10, fontWeight: "700", letterSpacing: 1.1, paddingTop: spacing.md, paddingBottom: spacing.xs },
+  savedLocationRow: { minHeight: 56, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: colors.border },
+  savedLocationSelect: { minHeight: 56, flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  savedLocationText: { flex: 1 },
+  removeCityButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   locationOptionText: { color: colors.text, fontSize: 15 },
   cityResult: { flex: 1, paddingVertical: spacing.sm },
   cityName: { color: colors.text, fontSize: 15, fontWeight: "700" },
@@ -540,6 +650,8 @@ const styles = StyleSheet.create({
   citySearchCredit: { minHeight: 44, justifyContent: "center", alignItems: "center" },
   citySearchCreditText: { color: colors.muted, fontSize: 11 },
   locationSearch: { minHeight: 48, color: colors.text, fontSize: 14, paddingHorizontal: spacing.md, marginBottom: spacing.sm, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, borderRadius: 8 },
+  saveCityButton: { minHeight: 40, flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: spacing.xs, paddingHorizontal: spacing.xs, marginBottom: spacing.xs },
+  saveCityText: { color: colors.secondary, fontSize: 12, fontWeight: "700" },
   moreStylesButton: { minHeight: 40, flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: spacing.xs, paddingHorizontal: spacing.xs },
   moreStylesText: { color: colors.secondary, fontSize: 12, fontWeight: "700" },
   searchBox: { minHeight: 50, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 10, marginBottom: spacing.md },
