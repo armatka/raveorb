@@ -46,6 +46,12 @@ test("validates Discovery query values and date ranges", () => {
   assert.equal(filters.countryCode, "CA");
   assert.equal(filters.page, 2);
   assert.equal(filters.startDateTime, "2030-06-01T00:00:00Z");
+  assert.throws(
+    () => parseTicketmasterQuery({ city: "Paris" }),
+    (error: unknown) => error instanceof TicketmasterQueryError
+      && error.message === "countryCode is required unless latlong is provided.",
+  );
+  assert.equal(parseTicketmasterQuery({ latlong: "48.8566,2.3522" }).countryCode, undefined);
   assert.throws(() => parseTicketmasterQuery({ page: "-1" }), TicketmasterQueryError);
   assert.throws(() => parseTicketmasterQuery({ startDate: "2030-02-30" }), TicketmasterQueryError);
   assert.throws(() => parseTicketmasterQuery({ startDate: "2030-06-02", endDate: "2030-06-01" }), TicketmasterQueryError);
@@ -67,12 +73,38 @@ test("electronicOnly filters events after classification", async () => {
       },
     }), { status: 200 });
 
-    const filters = parseTicketmasterQuery({ keyword: "electronic-only filter test", electronicOnly: "true" });
+    const filters = parseTicketmasterQuery({ keyword: "electronic-only filter test", countryCode: "US", electronicOnly: "true" });
     const result = await searchTicketmasterEvents(filters);
 
     assert.equal(filters.electronicOnly, true);
     assert.deepEqual(result.events.map((event) => event.id), ["electronic-only-techno"]);
     assert.equal(result.events[0].isElectronic, true);
+  } finally {
+    globalThis.fetch = priorFetch;
+    if (priorKey === undefined) delete process.env.TICKETMASTER_API_KEY;
+    else process.env.TICKETMASTER_API_KEY = priorKey;
+  }
+});
+
+test("latlong searches work without countryCode and omit it upstream", async () => {
+  const priorKey = process.env.TICKETMASTER_API_KEY;
+  const priorFetch = globalThis.fetch;
+  let requestUrl: URL | undefined;
+  try {
+    process.env.TICKETMASTER_API_KEY = "test-credential-not-real";
+    globalThis.fetch = async (input) => {
+      requestUrl = new URL(String(input));
+      return new Response(JSON.stringify({
+        _page: { number: 0, size: 20, totalPages: 1, totalElements: 0 },
+        _embedded: { events: [] },
+      }), { status: 200 });
+    };
+
+    await searchTicketmasterEvents(parseTicketmasterQuery({ latlong: "48.8566,2.3522", radius: "50" }));
+    assert.ok(requestUrl);
+    assert.equal(requestUrl.searchParams.get("latlong"), "48.8566,2.3522");
+    assert.equal(requestUrl.searchParams.get("radius"), "50");
+    assert.equal(requestUrl.searchParams.has("countryCode"), false);
   } finally {
     globalThis.fetch = priorFetch;
     if (priorKey === undefined) delete process.env.TICKETMASTER_API_KEY;
@@ -86,7 +118,7 @@ test("returns sanitized errors for upstream failures", async () => {
   try {
     delete process.env.TICKETMASTER_API_KEY;
     await assert.rejects(
-      searchTicketmasterEvents(parseTicketmasterQuery({ keyword: "unconfigured service test" })),
+      searchTicketmasterEvents(parseTicketmasterQuery({ keyword: "unconfigured service test", countryCode: "US" })),
       (error: unknown) => error instanceof TicketmasterError
         && error.statusCode === 500
         && error.message === "Ticketmaster event service is not configured.",
@@ -95,7 +127,7 @@ test("returns sanitized errors for upstream failures", async () => {
     process.env.TICKETMASTER_API_KEY = "test-credential-not-real";
     globalThis.fetch = async () => new Response("{}", { status: 429 });
     await assert.rejects(
-      searchTicketmasterEvents(parseTicketmasterQuery({ keyword: "isolated rate-limit test" })),
+      searchTicketmasterEvents(parseTicketmasterQuery({ keyword: "isolated rate-limit test", countryCode: "US" })),
       (error: unknown) => error instanceof TicketmasterError
         && error.statusCode === 429
         && error.message === "Ticketmaster rate limit reached. Try again shortly."

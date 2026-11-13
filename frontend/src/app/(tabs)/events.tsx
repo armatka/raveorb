@@ -25,13 +25,23 @@ import {
   type ElectronicDiscoveryCategory,
   type EventSection,
 } from "../../lib/eventDiscovery";
+import {
+  allDiscoveryLocationsLabel,
+  discoveryEventsQuery,
+  DEFAULT_DISCOVERY_LOCATION,
+  DEFAULT_DISCOVERY_RADIUS_KM,
+  discoveryLocationFromCity,
+  hasDiscoveryCoordinates,
+  loadDiscoveryLocation,
+  PRESET_DISCOVERY_LOCATIONS,
+} from "../../lib/discoveryLocation";
 import { eventStatusStorage, type EventStatus } from "../../lib/eventStatusStorage";
 import { preferencesStorage } from "../../lib/preferencesStorage";
 import { showAlert } from "../../lib/showAlert";
 import { eventsDataMode, eventsRepository } from "../../services/eventsRepository";
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
-import type { EventEntry } from "../../types/event";
+import type { DiscoveryLocation, EventEntry } from "../../types/event";
 
 const primaryCategoryOptions: Array<{ label: string; value: ElectronicDiscoveryCategory }> = [
   { label: "All", value: "all" },
@@ -66,7 +76,7 @@ export default function EventsScreen() {
   const [events, setEvents] = useState<EventEntry[]>([]);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [city, setCity] = useState<string | null>("Toronto");
+  const [location, setLocation] = useState<DiscoveryLocation | null>(DEFAULT_DISCOVERY_LOCATION);
   const [locationReady, setLocationReady] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
   const [locationSearch, setLocationSearch] = useState("");
@@ -96,15 +106,13 @@ export default function EventsScreen() {
       let isCurrent = true;
       setNow(new Date());
       setLocationReady(false);
-      Promise.allSettled([eventStatusStorage.list(), preferencesStorage.get()])
-        .then(([statusResult, preferenceResult]) => {
+      Promise.allSettled([eventStatusStorage.list(), loadDiscoveryLocation()])
+        .then(([statusResult, locationResult]) => {
           if (!isCurrent) return;
           if (statusResult.status === "fulfilled") setStatuses(statusResult.value);
           setStatusLoadError(statusResult.status === "rejected");
-          if (preferenceResult.status === "fulfilled") {
-            setCity(preferenceResult.value.discoveryCityConfigured ? preferenceResult.value.discoveryCity : "Toronto");
-          }
-          setLocationError(preferenceResult.status === "rejected");
+          if (locationResult.status === "fulfilled") setLocation(locationResult.value);
+          setLocationError(locationResult.status === "rejected");
           setLocationReady(true);
         })
       return () => {
@@ -123,8 +131,7 @@ export default function EventsScreen() {
       setPage(0);
       setTotalPages(1);
       eventsRepository.listEventsPage({
-        city: city ?? undefined,
-        countryCode: "CA",
+        ...discoveryEventsQuery(location),
         classificationName: "Music",
         search: debouncedQuery || undefined,
         ...(!debouncedQuery ? { electronicOnly: true } : {}),
@@ -146,17 +153,19 @@ export default function EventsScreen() {
         }
       });
       return () => { isCurrent = false; };
-    }, [city, debouncedQuery, locationReady, retryToken]),
+    }, [debouncedQuery, location, locationReady, retryToken]),
   );
 
-  const cityOptions = useMemo(
-    () => [...new Set([...events.map((event) => event.city).filter(Boolean), ...(city ? [city] : [])])].sort((first, second) => first.localeCompare(second)),
-    [city, events],
-  );
   const visibleEvents = useMemo(() => {
-    const filtered = filterDiscoveryEvents(events, query, { city, genres: [], type: "all", dateRange }, now);
+    const filtered = filterDiscoveryEvents(events, query, {
+      city: location?.city ?? null,
+      hasCoordinates: eventsDataMode === "api" && hasDiscoveryCoordinates(location),
+      genres: [],
+      type: "all",
+      dateRange,
+    }, now);
     return filterElectronicDiscoveryEvents(filtered, query, selectedCategory);
-  }, [city, dateRange, events, now, query, selectedCategory]);
+  }, [dateRange, events, location, now, query, selectedCategory]);
   const sections = useMemo(() => groupDiscoveryEvents(visibleEvents, now), [now, visibleEvents]);
   const isFiltered = Boolean(query.trim()) || selectedCategory !== "all" || dateRange !== "all-upcoming";
   const hasMore = eventsDataMode === "api" && page + 1 < totalPages;
@@ -173,12 +182,12 @@ export default function EventsScreen() {
     setRetryToken((token) => token + 1);
   };
 
-  const selectCity = async (nextCity: string | null) => {
+  const selectLocation = async (nextLocation: DiscoveryLocation | null) => {
     if (savingLocation) return;
     setSavingLocation(true);
     try {
-      await preferencesStorage.setDiscoveryCity(nextCity);
-      setCity(nextCity);
+      await preferencesStorage.setDiscoveryLocation(nextLocation);
+      setLocation(nextLocation);
       setLocationSearch("");
       setLocationError(false);
       setLocationOpen(false);
@@ -195,8 +204,7 @@ export default function EventsScreen() {
     try {
       const nextPage = page + 1;
       const result = await eventsRepository.listEventsPage({
-        city: city ?? undefined,
-        countryCode: "CA",
+        ...discoveryEventsQuery(location),
         classificationName: "Music",
         search: debouncedQuery || undefined,
         ...(!debouncedQuery ? { electronicOnly: true } : {}),
@@ -233,14 +241,24 @@ export default function EventsScreen() {
     }
   };
 
+  const locationLabel = location
+    ? `${location.label}${hasDiscoveryCoordinates(location) ? ` · within ${DEFAULT_DISCOVERY_RADIUS_KM} km` : ""}`
+    : allDiscoveryLocationsLabel();
+  const locationSearchValue = locationSearch.trim().toLocaleLowerCase();
+  const locationChoices = PRESET_DISCOVERY_LOCATIONS.filter((option) => option.label.toLocaleLowerCase().includes(locationSearchValue));
+  const selectedIsPreset = location !== null && PRESET_DISCOVERY_LOCATIONS.some((option) => option.city === location.city && option.countryCode === location.countryCode);
+  const showSelectedCustomLocation = location !== null && !selectedIsPreset && location.label.toLocaleLowerCase().includes(locationSearchValue);
+  const hasLocationChoice = PRESET_DISCOVERY_LOCATIONS.some((option) => option.city.toLocaleLowerCase() === locationSearchValue)
+    || (location !== null && location.city.toLocaleLowerCase() === locationSearchValue);
+
   const listHeader = (
     <View style={styles.headerContent}>
       <View style={styles.titleBlock}>
         <Text style={styles.eyebrow}>RAVEORB DISCOVERY</Text>
         <Text style={styles.title}>Discover</Text>
-        <Pressable onPress={() => setLocationOpen(true)} disabled={loadingEvents || locationError} style={styles.locationButton} accessibilityRole="button" accessibilityLabel={`Discovery location: ${city ?? "All locations"}`} accessibilityHint="Choose a discovery location">
+        <Pressable onPress={() => setLocationOpen(true)} disabled={loadingEvents || locationError} style={styles.locationButton} accessibilityRole="button" accessibilityLabel={`Discovery location: ${locationLabel}`} accessibilityHint="Choose a discovery location">
           <Ionicons name="location-outline" size={19} color={colors.secondary} />
-          <Text style={styles.locationText} numberOfLines={1}>{city ?? "All locations"}</Text>
+          <Text style={styles.locationText} numberOfLines={1}>{locationLabel}</Text>
           <Ionicons name="chevron-down" size={18} color={colors.secondary} />
         </Pressable>
       </View>
@@ -299,7 +317,7 @@ export default function EventsScreen() {
 
   const emptyMessage = eventLoadError
     ? { title: "Discovery unavailable", message: eventLoadError }
-    : { title: "No events found", message: city ? `No events found in ${city} with these filters.` : "No events found with these filters." };
+    : { title: "No events found", message: location ? `No events found in ${location.city} with these filters.` : "No events found with these filters." };
 
   return (
     <Screen edges={["top", "left", "right"]} style={styles.container}>
@@ -314,7 +332,7 @@ export default function EventsScreen() {
         ItemSeparatorComponent={ItemSeparator}
         ListHeaderComponent={listHeader}
         ListFooterComponent={hasMore ? <Pressable onPress={() => { void loadMore(); }} style={styles.loadMoreButton} disabled={loadingMore} accessibilityRole="button" accessibilityLabel="Load more events">{loadingMore ? <ActivityIndicator color={colors.background} /> : <Text style={styles.loadMoreText}>Load more</Text>}</Pressable> : undefined}
-        ListEmptyComponent={loadingEvents ? <ActivityIndicator color={colors.primary} style={styles.emptyLoader} /> : <EmptyDiscovery title={emptyMessage.title} message={emptyMessage.message} actionLabel={eventLoadError ? "Retry" : "Clear filters"} onAction={eventLoadError ? () => setRetryToken((token) => token + 1) : clearAll} onViewAll={!eventLoadError && city ? () => { void selectCity(null); } : undefined} onLoadMore={!eventLoadError && hasMore ? () => { void loadMore(); } : undefined} loadingMore={loadingMore} />}
+        ListEmptyComponent={loadingEvents ? <ActivityIndicator color={colors.primary} style={styles.emptyLoader} /> : <EmptyDiscovery title={emptyMessage.title} message={emptyMessage.message} actionLabel={eventLoadError ? "Retry" : "Clear filters"} onAction={eventLoadError ? () => setRetryToken((token) => token + 1) : clearAll} onViewAll={!eventLoadError && location ? () => { void selectLocation(null); } : undefined} onLoadMore={!eventLoadError && hasMore ? () => { void loadMore(); } : undefined} loadingMore={loadingMore} />}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         stickySectionHeadersEnabled={false}
@@ -340,14 +358,14 @@ export default function EventsScreen() {
               accessibilityLabel="Search discovery city"
             />
             <ScrollView>
-              {[null, ...cityOptions.filter((option) => option.toLocaleLowerCase().includes(locationSearch.trim().toLocaleLowerCase()))].map((option) => (
-                <Pressable key={option ?? "all-locations"} onPress={() => { void selectCity(option); }} disabled={savingLocation} style={styles.locationOption} accessibilityRole="radio" accessibilityState={{ checked: city === option, disabled: savingLocation }} aria-checked={city === option} accessibilityLabel={option ?? "All locations"}>
-                  <Text style={styles.locationOptionText}>{option ?? "All locations"}</Text>
-                  {city === option ? <Ionicons name="checkmark" size={20} color={colors.primary} /> : null}
+              {[null, ...locationChoices, ...(showSelectedCustomLocation ? [location] : [])].map((option) => (
+                <Pressable key={option?.city ?? "all-locations"} onPress={() => { void selectLocation(option); }} disabled={savingLocation} style={styles.locationOption} accessibilityRole="radio" accessibilityState={{ checked: location?.city === option?.city && location?.countryCode === option?.countryCode, disabled: savingLocation }} aria-checked={location?.city === option?.city && location?.countryCode === option?.countryCode} accessibilityLabel={option?.label ?? "All locations"}>
+                  <Text style={styles.locationOptionText}>{option?.label ?? "All locations"}</Text>
+                  {location?.city === option?.city && location?.countryCode === option?.countryCode ? <Ionicons name="checkmark" size={20} color={colors.primary} /> : null}
                 </Pressable>
               ))}
-              {locationSearch.trim() && !cityOptions.some((option) => option.toLocaleLowerCase() === locationSearch.trim().toLocaleLowerCase()) ? (
-                <Pressable onPress={() => { void selectCity(locationSearch.trim()); }} disabled={savingLocation} style={styles.locationOption} accessibilityRole="button" accessibilityLabel={`Use city ${locationSearch.trim()}`}>
+              {locationSearch.trim() && !hasLocationChoice ? (
+                <Pressable onPress={() => { void selectLocation(discoveryLocationFromCity(locationSearch, location?.countryCode ?? DEFAULT_DISCOVERY_LOCATION.countryCode)); }} disabled={savingLocation} style={styles.locationOption} accessibilityRole="button" accessibilityLabel={`Use city ${locationSearch.trim()}`}>
                   <Text style={styles.locationOptionText}>Use {locationSearch.trim()}</Text>
                   {savingLocation ? <ActivityIndicator color={colors.primary} /> : <Ionicons name="arrow-forward" size={18} color={colors.secondary} />}
                 </Pressable>

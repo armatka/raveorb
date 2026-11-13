@@ -62,7 +62,7 @@ type TicketmasterEventsResponse = {
 export type TicketmasterSearchFilters = {
   keyword?: string;
   city?: string;
-  countryCode: string;
+  countryCode?: string;
   postalCode?: string;
   latlong?: string;
   radius?: number;
@@ -305,10 +305,11 @@ export function parseTicketmasterQuery(query: Record<string, unknown>): Ticketma
   for (const key of Object.keys(query)) if (!allowedQueryKeys.has(key)) throw new TicketmasterQueryError(`Unsupported query parameter: ${key}`);
   const keyword = singleQueryValue(query, "keyword") ?? singleQueryValue(query, "search");
   const city = singleQueryValue(query, "city");
-  const rawCountryCode = singleQueryValue(query, "countryCode") ?? "CA";
-  if (!/^[a-z]{2}$/i.test(rawCountryCode)) throw new TicketmasterQueryError("countryCode must be a two-letter code.");
+  const rawCountryCode = singleQueryValue(query, "countryCode");
   const postalCode = singleQueryValue(query, "postalCode");
   const latlong = singleQueryValue(query, "latlong");
+  if (!rawCountryCode && !latlong) throw new TicketmasterQueryError("countryCode is required unless latlong is provided.");
+  if (rawCountryCode && !/^[a-z]{2}$/i.test(rawCountryCode)) throw new TicketmasterQueryError("countryCode must be a two-letter code.");
   if (latlong) {
     const match = /^(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)$/.exec(latlong);
     if (!match || Math.abs(Number(match[1])) > 90 || Math.abs(Number(match[2])) > 180) throw new TicketmasterQueryError("latlong must be valid latitude,longitude coordinates.");
@@ -337,7 +338,7 @@ export function parseTicketmasterQuery(query: Record<string, unknown>): Ticketma
     throw new TicketmasterQueryError("electronicOnly must be true or false.");
   }
   return {
-    ...(keyword ? { keyword } : {}), ...(city ? { city } : {}), countryCode: rawCountryCode.toUpperCase(),
+    ...(keyword ? { keyword } : {}), ...(city ? { city } : {}), ...(rawCountryCode ? { countryCode: rawCountryCode.toUpperCase() } : {}),
     ...(postalCode ? { postalCode } : {}), ...(latlong ? { latlong: latlong.replace(/\s/g, "") } : {}),
     ...(radius !== undefined ? { radius } : {}), unit: unitText,
     classificationName, ...(genreId ? { genreId } : {}),
@@ -413,7 +414,7 @@ function buildUrl(filters: TicketmasterSearchFilters): URL {
   const params = url.searchParams;
   if (filters.keyword) params.set("keyword", filters.keyword);
   if (filters.city) params.set("city", filters.city);
-  params.set("countryCode", filters.countryCode);
+  if (filters.countryCode) params.set("countryCode", filters.countryCode);
   if (filters.postalCode) params.set("postalCode", filters.postalCode);
   if (filters.latlong) params.set("latlong", filters.latlong);
   if (filters.radius !== undefined) params.set("radius", String(filters.radius));

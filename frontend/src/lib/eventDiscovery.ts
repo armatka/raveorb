@@ -8,6 +8,7 @@ export const ELECTRONIC_DISCOVERY_THRESHOLD = 60;
 
 export type DiscoveryFilters = {
   city: string | null;
+  hasCoordinates?: boolean;
   genres: string[];
   type: DiscoveryTypeFilter;
   dateRange: DiscoveryDateRange;
@@ -128,7 +129,7 @@ export function filterDiscoveryEvents(
 
   return events.filter((event) => {
     if (!matchesDiscoveryDateRange(event.date, "all-upcoming", now)) return false;
-    if (filters.city && event.city !== filters.city) return false;
+    if (!filters.hasCoordinates && filters.city && event.city !== filters.city) return false;
     if (filters.type !== "all" && event.type !== filters.type) return false;
     if (filters.genres.length > 0 && !filters.genres.some((genre) => event.genres.includes(genre))) return false;
     if (!matchesDiscoveryDateRange(event.date, filters.dateRange, now)) return false;

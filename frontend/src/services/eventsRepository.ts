@@ -216,7 +216,7 @@ function apiQuery(filters: EventQueryFilters): EventsApiQuery {
   return {
     keyword: filters.search,
     city: filters.city,
-    countryCode: filters.countryCode ?? "CA",
+    countryCode: filters.countryCode,
     postalCode: filters.postalCode,
     latlong: filters.latlong,
     radius: filters.radius,

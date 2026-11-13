@@ -9,12 +9,12 @@ import Logo from "../components/Logo";
 import MetricCard from "../components/MetricCard";
 import RecommendationCard from "../components/RecommendationCard";
 import { Screen } from "../components/Screen";
+import { DEFAULT_DISCOVERY_LOCATION, discoveryEventsQuery, loadDiscoveryLocation } from "../lib/discoveryLocation";
 import { formatEventSchedule } from "../lib/eventFormatting";
 import { eventStatusStorage, type EventStatus } from "../lib/eventStatusStorage";
 import { getHomeRecommendations } from "../lib/homeRecommendations";
 import { calculateNightStats } from "../lib/nightStats";
 import { nightsStorage } from "../lib/nightsStorage";
-import { preferencesStorage } from "../lib/preferencesStorage";
 import { eventsRepository } from "../services/eventsRepository";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
@@ -39,8 +39,8 @@ export default function HomeScreen() {
       setLoading(true);
       setLoadError(false);
       setNow(new Date());
-      Promise.allSettled([nightsStorage.list(), eventStatusStorage.list(), eventsRepository.listEvents(), preferencesStorage.get()])
-        .then(([nightResult, statusResult, eventResult, preferenceResult]) => {
+      Promise.allSettled([nightsStorage.list(), eventStatusStorage.list(), loadDiscoveryLocation()])
+        .then(async ([nightResult, statusResult, locationResult]) => {
           if (!isCurrent) return;
           if (nightResult.status === "fulfilled") {
             setNights(nightResult.value);
@@ -49,14 +49,18 @@ export default function HomeScreen() {
             setLoadError(true);
           }
           if (statusResult.status === "fulfilled") setStatuses(statusResult.value);
-          if (eventResult.status === "fulfilled") {
-            setEvents(eventResult.value);
+          const discoveryLocation = locationResult.status === "fulfilled" ? locationResult.value : DEFAULT_DISCOVERY_LOCATION;
+          setDiscoveryCity(discoveryLocation?.city ?? null);
+          setLocationError(locationResult.status === "rejected");
+          try {
+            const result = await eventsRepository.listEvents(discoveryEventsQuery(discoveryLocation));
+            if (!isCurrent) return;
+            setEvents(result);
             setEventLoadError(null);
-          } else {
-            setEventLoadError(eventResult.reason instanceof Error ? eventResult.reason.message : "Could not load events.");
+          } catch (error) {
+            if (!isCurrent) return;
+            setEventLoadError(error instanceof Error ? error.message : "Could not load events.");
           }
-          if (preferenceResult.status === "fulfilled") setDiscoveryCity(preferenceResult.value.discoveryCityConfigured ? preferenceResult.value.discoveryCity : "Toronto");
-          setLocationError(preferenceResult.status === "rejected");
         })
         .finally(() => {
           if (isCurrent) setLoading(false);

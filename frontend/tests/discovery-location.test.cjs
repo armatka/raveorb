@@ -5,11 +5,11 @@ const Module = require("node:module");
 const test = require("node:test");
 const ts = require("typescript");
 
-let stored = null;
+const stored = new Map();
 let storageError = false;
 const asyncStorage = {
-  async getItem(key) { assert.equal(key, "raveorb.preferences.v1"); if (storageError) throw new Error("Unavailable"); return stored; },
-  async setItem(key, value) { assert.equal(key, "raveorb.preferences.v1"); if (storageError) throw new Error("Unavailable"); stored = value; },
+  async getItem(key) { assert.ok(["raveorb.preferences.v1", "raveorb.preferences.v2"].includes(key)); if (storageError) throw new Error("Unavailable"); return stored.get(key) ?? null; },
+  async setItem(key, value) { assert.equal(key, "raveorb.preferences.v2"); if (storageError) throw new Error("Unavailable"); stored.set(key, value); },
 };
 
 function loadTypeScript(relativePath) {
@@ -19,38 +19,105 @@ function loadTypeScript(relativePath) {
   const loaded = new Module(filename, module);
   loaded.filename = filename;
   loaded.paths = Module._nodeModulePaths(path.dirname(filename));
-  loaded.require = (name) => name === "@react-native-async-storage/async-storage" ? asyncStorage : require(name);
+  loaded.require = (name) => {
+    if (name === "@react-native-async-storage/async-storage") return asyncStorage;
+    if (name === "../services/eventsRepository") return { eventsDataMode: "mock" };
+    if (name.startsWith(".")) {
+      const dependency = path.resolve(path.dirname(filename), `${name}.ts`);
+      if (fs.existsSync(dependency)) {
+        return loadTypeScript(path.relative(path.resolve(__dirname, ".."), dependency));
+      }
+    }
+    return require(name);
+  };
   loaded._compile(output, filename);
   return loaded.exports;
 }
 
 const { preferencesStorage } = loadTypeScript("src/lib/preferencesStorage.ts");
 const { groupDiscoveryEvents, filterDiscoveryEvents, filterElectronicDiscoveryEvents } = loadTypeScript("src/lib/eventDiscovery.ts");
+const {
+  DEFAULT_DISCOVERY_LOCATION,
+  DEFAULT_DISCOVERY_RADIUS_KM,
+  allDiscoveryLocationsLabel,
+  discoveryEventsQuery,
+  discoveryLocationFromCity,
+  discoveryLocationToQuery,
+  loadDiscoveryLocation,
+} = loadTypeScript("src/lib/discoveryLocation.ts");
 const { getHomeRecommendations } = loadTypeScript("src/lib/homeRecommendations.ts");
 
-test.beforeEach(() => { stored = null; storageError = false; });
+test.beforeEach(() => { stored.clear(); storageError = false; });
 
-test("preference persists, clears and preserves unrelated fields", async () => {
-  assert.equal((await preferencesStorage.get()).discoveryCity, null);
-  stored = JSON.stringify({ futureSetting: "keep" });
-  await preferencesStorage.setDiscoveryCity("Toronto");
-  assert.equal((await preferencesStorage.get()).discoveryCity, "Toronto");
-  assert.equal(JSON.parse(stored).futureSetting, "keep");
-  await preferencesStorage.setDiscoveryCity(null);
-  assert.equal((await preferencesStorage.get()).discoveryCity, null);
+test("location preference persists, clears and preserves unrelated fields", async () => {
+  assert.equal((await preferencesStorage.get()).discoveryLocation, null);
+  stored.set("raveorb.preferences.v2", JSON.stringify({ futureSetting: "keep" }));
+  await preferencesStorage.setDiscoveryLocation(DEFAULT_DISCOVERY_LOCATION);
+  assert.deepEqual((await preferencesStorage.get()).discoveryLocation, DEFAULT_DISCOVERY_LOCATION);
+  assert.equal(JSON.parse(stored.get("raveorb.preferences.v2")).futureSetting, "keep");
+  await preferencesStorage.setDiscoveryLocation(null);
+  assert.equal((await preferencesStorage.get()).discoveryLocation, null);
 });
 
-test("concurrent preference changes are serialized", async () => {
-  await Promise.all([preferencesStorage.setDiscoveryCity("Toronto"), preferencesStorage.setDiscoveryCity("Ottawa")]);
-  assert.equal((await preferencesStorage.get()).discoveryCity, "Ottawa");
+test("loads the saved location or defaults and labels all locations by country", async () => {
+  assert.deepEqual(await loadDiscoveryLocation(), DEFAULT_DISCOVERY_LOCATION);
+  const saved = discoveryLocationFromCity("Paris, FR");
+  stored.set("raveorb.preferences.v2", JSON.stringify({ discoveryLocation: saved }));
+  assert.deepEqual(await loadDiscoveryLocation(), saved);
+  assert.equal(allDiscoveryLocationsLabel(), "All of Canada");
+});
+
+test("v1 city preference migrates to v2 and preserves its city", async () => {
+  stored.set("raveorb.preferences.v1", JSON.stringify({ discoveryCity: "London", futureSetting: "keep" }));
+  const preferences = await preferencesStorage.get();
+  assert.equal(preferences.discoveryLocation.city, "London");
+  assert.equal(preferences.discoveryLocation.countryCode, DEFAULT_DISCOVERY_LOCATION.countryCode);
+  assert.equal(preferences.discoveryLocation.latitude, undefined);
+  assert.equal(preferences.discoveryLocationConfigured, true);
+  assert.equal(JSON.parse(stored.get("raveorb.preferences.v2")).futureSetting, "keep");
+  assert.equal(JSON.parse(stored.get("raveorb.preferences.v2")).discoveryCity, undefined);
+});
+
+test("concurrent location changes are serialized", async () => {
+  const montreal = discoveryLocationFromCity("Montreal");
+  const ottawa = discoveryLocationFromCity("Ottawa");
+  await Promise.all([preferencesStorage.setDiscoveryLocation(montreal), preferencesStorage.setDiscoveryLocation(ottawa)]);
+  assert.equal((await preferencesStorage.get()).discoveryLocation.city, "Ottawa");
 });
 
 test("invalid preferences and storage errors do not overwrite existing data", async () => {
-  stored = "not-json";
-  await assert.rejects(preferencesStorage.setDiscoveryCity("Toronto"));
-  assert.equal(stored, "not-json");
+  stored.set("raveorb.preferences.v2", "not-json");
+  await assert.rejects(preferencesStorage.setDiscoveryLocation(DEFAULT_DISCOVERY_LOCATION));
+  assert.equal(stored.get("raveorb.preferences.v2"), "not-json");
   storageError = true;
   await assert.rejects(preferencesStorage.get());
+});
+
+test("free-text city accepts an explicit country code or inherits the selected country", () => {
+  const selected = discoveryLocationFromCity("New York");
+  const paris = discoveryLocationFromCity("Paris, FR", selected.countryCode);
+  const austin = discoveryLocationFromCity("Austin", selected.countryCode);
+  assert.deepEqual({ city: paris.city, countryCode: paris.countryCode }, { city: "Paris", countryCode: "FR" });
+  assert.deepEqual({ city: austin.city, countryCode: austin.countryCode }, { city: "Austin", countryCode: "US" });
+});
+
+test("coordinate locations query a radius and retain nearby towns in discovery results", () => {
+  const query = discoveryLocationToQuery(DEFAULT_DISCOVERY_LOCATION);
+  assert.deepEqual(query, {
+    latlong: `${DEFAULT_DISCOVERY_LOCATION.latitude},${DEFAULT_DISCOVERY_LOCATION.longitude}`,
+    radius: DEFAULT_DISCOVERY_RADIUS_KM,
+    unit: "km",
+  });
+  assert.deepEqual(discoveryEventsQuery(DEFAULT_DISCOVERY_LOCATION), {
+    ...query,
+    city: DEFAULT_DISCOVERY_LOCATION.city,
+  });
+
+  const now = new Date(2026, 10, 10, 12);
+  const events = ["Toronto", "Mississauga"].map((city) => ({ city, date: "2026-11-11", type: "club", genres: [], title: "Night", venueName: "Venue", artists: [] }));
+  const filters = { city: "Toronto", genres: [], type: "all", dateRange: "all-upcoming" };
+  assert.deepEqual(filterDiscoveryEvents(events, "", { ...filters, hasCoordinates: true }, now).map((event) => event.city), ["Toronto", "Mississauga"]);
+  assert.deepEqual(filterDiscoveryEvents(events, "", { ...filters, hasCoordinates: false }, now).map((event) => event.city), ["Toronto"]);
 });
 
 test("groups tonight, weekend, next seven days and later upcoming once each", () => {

@@ -1,6 +1,15 @@
 export type EventType = "festival" | "rave" | "concert" | "club";
 export type EventStatus = "scheduled" | "cancelled" | "postponed" | "sold-out";
 export type EventCurrency = string;
+export type DiscoveryLocation = {
+  label: string;
+  city: string;
+  region?: string;
+  countryCode: string;
+  latitude?: number;
+  longitude?: number;
+  timezone?: string;
+};
 export const raveOrbCategories = [
   "House",
   "Tech House",

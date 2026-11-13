@@ -102,3 +102,13 @@ export interface Venue {
   visits: number;
   favoriteGenre: string;
 }
+
+export type DiscoveryLocation = {
+  label: string;
+  city: string;
+  region?: string;
+  countryCode: string;
+  latitude?: number;
+  longitude?: number;
+  timezone?: string;
+};
