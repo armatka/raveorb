@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Pressable,
   RefreshControl,
@@ -40,9 +41,10 @@ import { eventStatusStorage, type EventStatus } from "../../lib/eventStatusStora
 import { preferencesStorage } from "../../lib/preferencesStorage";
 import { showAlert } from "../../lib/showAlert";
 import { eventsDataMode, eventsRepository } from "../../services/eventsRepository";
+import { isLocationSearchQuery, searchLocations } from "../../services/locationsApi";
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
-import type { DiscoveryLocation, EventEntry } from "../../types/event";
+import type { CitySearchResult, DiscoveryLocation, EventEntry } from "../../types/event";
 
 const primaryCategoryOptions: Array<{ label: string; value: ElectronicDiscoveryCategory }> = [
   { label: "All", value: "all" },
@@ -81,6 +83,12 @@ export default function EventsScreen() {
   const [locationReady, setLocationReady] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
   const [locationSearch, setLocationSearch] = useState("");
+  const [citySearch, setCitySearch] = useState<{
+    query: string;
+    results: CitySearchResult[];
+    status: "loading" | "success" | "error";
+  }>({ query: "", results: [], status: "loading" });
+  const [citySearchRetry, setCitySearchRetry] = useState(0);
   const [savingLocation, setSavingLocation] = useState(false);
   const [locationError, setLocationError] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<ElectronicDiscoveryCategory>("all");
@@ -101,6 +109,24 @@ export default function EventsScreen() {
     const timer = setTimeout(() => setDebouncedQuery(query.trim()), 300);
     return () => clearTimeout(timer);
   }, [query]);
+
+  useEffect(() => {
+    const search = locationSearch.trim();
+    if (!locationOpen || eventsDataMode !== "api" || !isLocationSearchQuery(search)) return;
+    let isCurrent = true;
+    setCitySearch({ query: search, results: [], status: "loading" });
+    const timer = setTimeout(() => {
+      searchLocations(search).then((results) => {
+        if (isCurrent) setCitySearch({ query: search, results, status: "success" });
+      }).catch(() => {
+        if (isCurrent) setCitySearch({ query: search, results: [], status: "error" });
+      });
+    }, 300);
+    return () => {
+      isCurrent = false;
+      clearTimeout(timer);
+    };
+  }, [locationOpen, locationSearch, citySearchRetry]);
 
   useFocusEffect(
     useCallback(() => {
@@ -246,6 +272,8 @@ export default function EventsScreen() {
     ? `${location.label}${hasDiscoveryCoordinates(location) ? ` · within ${DEFAULT_DISCOVERY_RADIUS_KM} km` : ""}`
     : allDiscoveryLocationsLabel();
   const locationSearchValue = locationSearch.trim().toLocaleLowerCase();
+  const searchingCities = eventsDataMode === "api" && Boolean(locationSearchValue);
+  const citySearchLoading = citySearch.query !== locationSearch.trim() || citySearch.status === "loading";
   const locationChoices = PRESET_DISCOVERY_LOCATIONS.filter((option) => option.label.toLocaleLowerCase().includes(locationSearchValue));
   const selectedIsPreset = location !== null && PRESET_DISCOVERY_LOCATIONS.some((option) => option.city === location.city && option.countryCode === location.countryCode);
   const showSelectedCustomLocation = location !== null && !selectedIsPreset && location.label.toLocaleLowerCase().includes(locationSearchValue);
@@ -358,21 +386,56 @@ export default function EventsScreen() {
                 style={styles.locationSearch}
                 returnKeyType="search"
                 accessibilityLabel="Search discovery city"
+                maxLength={80}
               />
               <ScrollView keyboardShouldPersistTaps="handled">
-                {[null, ...locationChoices, ...(showSelectedCustomLocation ? [location] : [])].map((option) => (
+                {searchingCities ? (
+                  !isLocationSearchQuery(locationSearch) ? (
+                    <Text style={styles.citySearchMessage}>Type at least 2 characters to search.</Text>
+                  ) : citySearchLoading ? (
+                    <ActivityIndicator color={colors.primary} style={styles.citySearchMessage} accessibilityLabel="Searching cities" />
+                  ) : citySearch.status === "error" ? (
+                    <View style={styles.citySearchMessage} accessibilityLiveRegion="polite">
+                      <Text style={styles.locationOptionText}>City search is unavailable. Please try again.</Text>
+                      <Pressable onPress={() => setCitySearchRetry((token) => token + 1)} style={styles.citySearchRetry} accessibilityRole="button" accessibilityLabel="Retry city search">
+                        <Text style={styles.citySearchRetryText}>Retry</Text>
+                      </Pressable>
+                    </View>
+                  ) : citySearch.results.length === 0 ? (
+                    <Text style={styles.citySearchMessage} accessibilityLiveRegion="polite">No cities found</Text>
+                  ) : citySearch.results.map((option) => {
+                    const selected = location?.latitude === option.latitude && location?.longitude === option.longitude
+                      && location?.countryCode === option.countryCode;
+                    return (
+                      <Pressable key={option.id} onPress={() => { void selectLocation(option); }} disabled={savingLocation} style={styles.locationOption} accessibilityRole="radio" accessibilityState={{ checked: selected, disabled: savingLocation }} aria-checked={selected} accessibilityLabel={option.label}>
+                        <View style={styles.cityResult}>
+                          <Text style={styles.cityName}>{option.city}</Text>
+                          <Text style={styles.cityRegion}>{[option.region, option.country ?? option.countryCode].filter(Boolean).join(", ")}</Text>
+                        </View>
+                        {selected ? <Ionicons name="checkmark" size={20} color={colors.primary} /> : null}
+                      </Pressable>
+                    );
+                  })
+                ) : [null, ...locationChoices, ...(showSelectedCustomLocation ? [location] : [])].map((option) => (
                   <Pressable key={option?.city ?? "all-locations"} onPress={() => { void selectLocation(option); }} disabled={savingLocation} style={styles.locationOption} accessibilityRole="radio" accessibilityState={{ checked: location?.city === option?.city && location?.countryCode === option?.countryCode, disabled: savingLocation }} aria-checked={location?.city === option?.city && location?.countryCode === option?.countryCode} accessibilityLabel={option?.label ?? "All locations"}>
                     <Text style={styles.locationOptionText}>{option?.label ?? "All locations"}</Text>
                     {location?.city === option?.city && location?.countryCode === option?.countryCode ? <Ionicons name="checkmark" size={20} color={colors.primary} /> : null}
                   </Pressable>
                 ))}
-                {locationSearch.trim() && !hasLocationChoice ? (
+                {eventsDataMode === "mock" && locationSearch.trim() && !hasLocationChoice ? (
                   <Pressable onPress={() => { void selectLocation(discoveryLocationFromCity(locationSearch, location?.countryCode ?? DEFAULT_DISCOVERY_LOCATION.countryCode)); }} disabled={savingLocation} style={styles.locationOption} accessibilityRole="button" accessibilityLabel={`Use city ${locationSearch.trim()}`}>
                     <Text style={styles.locationOptionText}>Use {locationSearch.trim()}</Text>
                     {savingLocation ? <ActivityIndicator color={colors.primary} /> : <Ionicons name="arrow-forward" size={18} color={colors.secondary} />}
                   </Pressable>
                 ) : null}
               </ScrollView>
+              <Pressable
+                onPress={() => { void Linking.openURL("https://open-meteo.com").catch(() => showAlert("Could not open link", "Please visit https://open-meteo.com for city search credits.")); }}
+                style={styles.citySearchCredit}
+                accessibilityRole="link"
+              >
+                <Text style={styles.citySearchCreditText}>City search by Open-Meteo.com</Text>
+              </Pressable>
             </View>
           </KeyboardAvoidingView>
         </SafeAreaView>
@@ -468,6 +531,14 @@ const styles = StyleSheet.create({
   closeButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   locationOption: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: colors.border },
   locationOptionText: { color: colors.text, fontSize: 15 },
+  cityResult: { flex: 1, paddingVertical: spacing.sm },
+  cityName: { color: colors.text, fontSize: 15, fontWeight: "700" },
+  cityRegion: { color: colors.muted, fontSize: 13, marginTop: spacing.xs },
+  citySearchMessage: { color: colors.muted, paddingVertical: spacing.md },
+  citySearchRetry: { minHeight: 44, justifyContent: "center", alignSelf: "flex-start" },
+  citySearchRetryText: { color: colors.primary, fontWeight: "700" },
+  citySearchCredit: { minHeight: 44, justifyContent: "center", alignItems: "center" },
+  citySearchCreditText: { color: colors.muted, fontSize: 11 },
   locationSearch: { minHeight: 48, color: colors.text, fontSize: 14, paddingHorizontal: spacing.md, marginBottom: spacing.sm, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, borderRadius: 8 },
   moreStylesButton: { minHeight: 40, flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: spacing.xs, paddingHorizontal: spacing.xs },
   moreStylesText: { color: colors.secondary, fontSize: 12, fontWeight: "700" },

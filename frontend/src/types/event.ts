@@ -10,6 +10,13 @@ export type DiscoveryLocation = {
   longitude?: number;
   timezone?: string;
 };
+export type CitySearchResult = DiscoveryLocation & {
+  id: string;
+  country?: string;
+  latitude: number;
+  longitude: number;
+  population?: number;
+};
 export const raveOrbCategories = [
   "House",
   "Tech House",
