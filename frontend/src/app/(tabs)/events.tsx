@@ -3,6 +3,7 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
   Pressable,
   RefreshControl,
@@ -341,37 +342,39 @@ export default function EventsScreen() {
       />
       <Modal visible={locationOpen} transparent animationType="slide" onRequestClose={() => setLocationOpen(false)}>
         <SafeAreaView style={styles.modalOverlay}>
-          <View style={styles.locationSheet} accessibilityViewIsModal>
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>Choose location</Text>
-              <Pressable onPress={() => setLocationOpen(false)} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Close location selector">
-                <Ionicons name="close" size={22} color={colors.text} />
-              </Pressable>
+          <KeyboardAvoidingView behavior="padding" style={styles.sheetAvoider}>
+            <View style={styles.locationSheet} accessibilityViewIsModal>
+              <View style={styles.sheetHeader}>
+                <Text style={styles.sheetTitle}>Choose location</Text>
+                <Pressable onPress={() => setLocationOpen(false)} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Close location selector">
+                  <Ionicons name="close" size={22} color={colors.text} />
+                </Pressable>
+              </View>
+              <TextInput
+                value={locationSearch}
+                onChangeText={setLocationSearch}
+                placeholder="Search a city"
+                placeholderTextColor={colors.muted}
+                style={styles.locationSearch}
+                returnKeyType="search"
+                accessibilityLabel="Search discovery city"
+              />
+              <ScrollView keyboardShouldPersistTaps="handled">
+                {[null, ...locationChoices, ...(showSelectedCustomLocation ? [location] : [])].map((option) => (
+                  <Pressable key={option?.city ?? "all-locations"} onPress={() => { void selectLocation(option); }} disabled={savingLocation} style={styles.locationOption} accessibilityRole="radio" accessibilityState={{ checked: location?.city === option?.city && location?.countryCode === option?.countryCode, disabled: savingLocation }} aria-checked={location?.city === option?.city && location?.countryCode === option?.countryCode} accessibilityLabel={option?.label ?? "All locations"}>
+                    <Text style={styles.locationOptionText}>{option?.label ?? "All locations"}</Text>
+                    {location?.city === option?.city && location?.countryCode === option?.countryCode ? <Ionicons name="checkmark" size={20} color={colors.primary} /> : null}
+                  </Pressable>
+                ))}
+                {locationSearch.trim() && !hasLocationChoice ? (
+                  <Pressable onPress={() => { void selectLocation(discoveryLocationFromCity(locationSearch, location?.countryCode ?? DEFAULT_DISCOVERY_LOCATION.countryCode)); }} disabled={savingLocation} style={styles.locationOption} accessibilityRole="button" accessibilityLabel={`Use city ${locationSearch.trim()}`}>
+                    <Text style={styles.locationOptionText}>Use {locationSearch.trim()}</Text>
+                    {savingLocation ? <ActivityIndicator color={colors.primary} /> : <Ionicons name="arrow-forward" size={18} color={colors.secondary} />}
+                  </Pressable>
+                ) : null}
+              </ScrollView>
             </View>
-            <TextInput
-              value={locationSearch}
-              onChangeText={setLocationSearch}
-              placeholder="Search a city"
-              placeholderTextColor={colors.muted}
-              style={styles.locationSearch}
-              returnKeyType="search"
-              accessibilityLabel="Search discovery city"
-            />
-            <ScrollView>
-              {[null, ...locationChoices, ...(showSelectedCustomLocation ? [location] : [])].map((option) => (
-                <Pressable key={option?.city ?? "all-locations"} onPress={() => { void selectLocation(option); }} disabled={savingLocation} style={styles.locationOption} accessibilityRole="radio" accessibilityState={{ checked: location?.city === option?.city && location?.countryCode === option?.countryCode, disabled: savingLocation }} aria-checked={location?.city === option?.city && location?.countryCode === option?.countryCode} accessibilityLabel={option?.label ?? "All locations"}>
-                  <Text style={styles.locationOptionText}>{option?.label ?? "All locations"}</Text>
-                  {location?.city === option?.city && location?.countryCode === option?.countryCode ? <Ionicons name="checkmark" size={20} color={colors.primary} /> : null}
-                </Pressable>
-              ))}
-              {locationSearch.trim() && !hasLocationChoice ? (
-                <Pressable onPress={() => { void selectLocation(discoveryLocationFromCity(locationSearch, location?.countryCode ?? DEFAULT_DISCOVERY_LOCATION.countryCode)); }} disabled={savingLocation} style={styles.locationOption} accessibilityRole="button" accessibilityLabel={`Use city ${locationSearch.trim()}`}>
-                  <Text style={styles.locationOptionText}>Use {locationSearch.trim()}</Text>
-                  {savingLocation ? <ActivityIndicator color={colors.primary} /> : <Ionicons name="arrow-forward" size={18} color={colors.secondary} />}
-                </Pressable>
-              ) : null}
-            </ScrollView>
-          </View>
+          </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
     </Screen>
@@ -455,8 +458,11 @@ const styles = StyleSheet.create({
   mockNotice: { color: colors.warning, fontSize: 10, fontWeight: "700", marginBottom: spacing.sm },
   locationButton: { minHeight: 44, flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: spacing.xs },
   locationText: { color: colors.secondary, fontSize: 17, fontWeight: "700", flexShrink: 1 },
-  modalOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0, 0, 0, 0.65)" },
-  locationSheet: { maxHeight: "75%", backgroundColor: colors.surface, borderTopLeftRadius: 12, borderTopRightRadius: 12, paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0, 0, 0, 0.65)" },
+  // Pads the sheet above the keyboard; flexShrink lets the sheet compress
+  // instead of being pushed off-screen when the keyboard is open.
+  sheetAvoider: { flex: 1, justifyContent: "flex-end" },
+  locationSheet: { maxHeight: "75%", flexShrink: 1, backgroundColor: colors.surface, borderTopLeftRadius: 12, borderTopRightRadius: 12, paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
   sheetHeader: { minHeight: 60, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   sheetTitle: { color: colors.text, fontSize: 18, fontWeight: "700" },
   closeButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },

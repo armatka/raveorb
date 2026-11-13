@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import {
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   type ScrollViewProps,
@@ -27,22 +29,43 @@ export function Screen({
   style,
   contentContainerStyle,
   showsVerticalScrollIndicator = false,
-  keyboardShouldPersistTaps,
+  keyboardShouldPersistTaps = "handled",
 }: ScreenProps) {
+  if (!scrollable) {
+    return (
+      <SafeAreaView edges={edges} style={[styles.root, style]}>
+        {children}
+      </SafeAreaView>
+    );
+  }
+
+  // iOS: automaticallyAdjustKeyboardInsets pads the scroll content by the
+  // keyboard overlap (safe-area aware) and keeps the focused field visible.
+  // Android: the app is edge-to-edge, so the window no longer resizes for the
+  // keyboard; a padding KeyboardAvoidingView shrinks the scroll area instead.
+  // Headers are rendered inside the scroll content (native header is hidden),
+  // so no extra keyboardVerticalOffset is needed.
+  const scroll = (
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={contentContainerStyle}
+      showsVerticalScrollIndicator={showsVerticalScrollIndicator}
+      keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+      automaticallyAdjustContentInsets={false}
+      contentInsetAdjustmentBehavior="never"
+      automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
+    >
+      {children}
+    </ScrollView>
+  );
+
   return (
     <SafeAreaView edges={edges} style={[styles.root, style]}>
-      {scrollable ? (
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={contentContainerStyle}
-          showsVerticalScrollIndicator={showsVerticalScrollIndicator}
-          keyboardShouldPersistTaps={keyboardShouldPersistTaps}
-          automaticallyAdjustContentInsets={false}
-          contentInsetAdjustmentBehavior="never"
-        >
-          {children}
-        </ScrollView>
-      ) : children}
+      {Platform.OS === "android" ? (
+        <KeyboardAvoidingView behavior="padding" style={styles.scroll}>
+          {scroll}
+        </KeyboardAvoidingView>
+      ) : scroll}
     </SafeAreaView>
   );
 }
