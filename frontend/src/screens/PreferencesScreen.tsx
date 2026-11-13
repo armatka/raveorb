@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
-import { useCallback, useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Screen } from "../components/Screen";
@@ -26,6 +26,18 @@ export default function PreferencesScreen() {
   const [preferences, setPreferences] = useState<AppPreferences | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
+  const footerTap = useRef<{ count: number; timer?: ReturnType<typeof setTimeout> }>({ count: 0 });
+
+  const tapFooter = () => {
+    if (footerTap.current.timer) clearTimeout(footerTap.current.timer);
+    footerTap.current.count += 1;
+    if (footerTap.current.count >= 7) {
+      footerTap.current.count = 0;
+      router.push("/admin-review");
+      return;
+    }
+    footerTap.current.timer = setTimeout(() => { footerTap.current.count = 0; }, 1400);
+  };
 
   useFocusEffect(useCallback(() => {
     let active = true;
@@ -132,6 +144,9 @@ export default function PreferencesScreen() {
           />
         </>
       )}
+      <Pressable onPress={tapFooter} style={styles.footer} accessibilityRole="button" accessibilityLabel="RaveOrb app information">
+        <Text style={styles.footerText}>RaveOrb · Independent event guide</Text>
+      </Pressable>
     </Screen>
   );
 }
@@ -194,4 +209,6 @@ const styles = StyleSheet.create({
   message: { alignItems: "center", marginTop: spacing.xxl, gap: spacing.md },
   messageText: { color: colors.textSecondary, fontSize: 14 },
   retryText: { color: colors.secondary, fontWeight: "700", padding: spacing.md },
+  footer: { minHeight: 48, alignItems: "center", justifyContent: "center", marginTop: spacing.xxl },
+  footerText: { color: colors.muted, fontSize: 10 },
 });

@@ -20,6 +20,39 @@ export const raveOrbCategories = [
   "Other",
 ] as const;
 export type RaveOrbCategory = (typeof raveOrbCategories)[number];
+export type SubmissionStatus = "pending" | "approved" | "rejected";
+
+export type EventSubmissionInput = {
+  title: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  timezone: string;
+  venueName: string;
+  address: string;
+  city: string;
+  region?: string;
+  countryCode: string;
+  latitude: number;
+  longitude: number;
+  artists: string[];
+  style: RaveOrbCategory;
+  description: string;
+  ticketUrl?: string;
+  priceMin?: number;
+  priceMax?: number;
+  currency?: string;
+  ageRestriction?: string;
+  submitterEmail?: string;
+};
+
+export type EventSubmission = EventSubmissionInput & {
+  id: string;
+  status: SubmissionStatus;
+  createdAt: string;
+  reviewedAt?: string;
+  rejectReason?: string;
+};
 
 export type TicketmasterClassificationValue = {
   id?: string;

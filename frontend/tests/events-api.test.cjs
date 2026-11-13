@@ -16,12 +16,41 @@ function loadTypeScript(relativePath) {
   return loaded.exports;
 }
 
-const { serializeEventsQuery } = loadTypeScript("src/services/eventsApi.ts");
+const previousApiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
+process.env.EXPO_PUBLIC_API_BASE_URL = "https://api.example.test";
+const { serializeEventsQuery, requestEventsApi } = loadTypeScript("src/services/eventsApi.ts");
+if (previousApiBaseUrl === undefined) delete process.env.EXPO_PUBLIC_API_BASE_URL;
+else process.env.EXPO_PUBLIC_API_BASE_URL = previousApiBaseUrl;
 
 test("serializes electronic-only discovery pagination options", () => {
   const params = new URLSearchParams(serializeEventsQuery({ electronicOnly: true, size: 50 }));
   assert.equal(params.get("electronicOnly"), "true");
   assert.equal(params.get("size"), "50");
+});
+
+test("supports JSON POST requests with caller-supplied authorization headers", async () => {
+  const previousFetch = global.fetch;
+  let request;
+  global.fetch = async (url, options) => {
+    request = { url, options };
+    return new Response(JSON.stringify({ id: "uuid", status: "pending" }), { status: 201 });
+  };
+  try {
+    const result = await requestEventsApi("/api/submissions", {
+      method: "POST",
+      headers: { Authorization: "Bearer in-memory-admin-code" },
+      body: { title: "Test event" },
+    });
+    assert.equal(result.response.status, 201);
+    assert.deepEqual(result.payload, { id: "uuid", status: "pending" });
+    assert.equal(request.url, "https://api.example.test/api/submissions");
+    assert.equal(request.options.method, "POST");
+    assert.equal(request.options.headers.Authorization, "Bearer in-memory-admin-code");
+    assert.equal(request.options.headers["Content-Type"], "application/json");
+    assert.equal(request.options.body, JSON.stringify({ title: "Test event" }));
+  } finally {
+    global.fetch = previousFetch;
+  }
 });
 
 test("omits electronicOnly for general event searches", () => {

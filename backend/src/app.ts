@@ -1,13 +1,31 @@
 import cors from "cors";
-import express, { type ErrorRequestHandler, type Response } from "express";
+import express, { type ErrorRequestHandler, type RequestHandler, type Response } from "express";
 
+import { getDefaultSubmissionStore, type SubmissionInput, type SubmissionStatus, type SubmissionStore } from "./db/submissions.js";
 import { events, venues } from "./data/mockData.js";
 import { getStats } from "./services/stats.js";
 import { GeocodingError, GeocodingQueryError, searchCities } from "./services/geocoding.js";
 import { getEventById, parseEventSearchQuery, searchEvents, ProviderError, EventQueryError } from "./services/events.js";
+import { createSubmissionRateLimiter, requireAdmin, SubmissionValidationError, validateSubmissionInput } from "./services/submissions.js";
 
-export function createApp(eventService = { searchEvents, getEventById, parseEventSearchQuery }) {
+type EventService = {
+  searchEvents: typeof searchEvents;
+  getEventById: typeof getEventById;
+  parseEventSearchQuery: typeof parseEventSearchQuery;
+};
+
+type AppOptions = {
+  submissionStore?: SubmissionStore;
+  submissionRateLimiter?: RequestHandler;
+};
+
+export function createApp(
+  eventService: EventService = { searchEvents, getEventById, parseEventSearchQuery },
+  options: AppOptions = {},
+) {
   const app = express();
+  const getSubmissionStore = () => options.submissionStore ?? getDefaultSubmissionStore();
+  const submissionRateLimiter = options.submissionRateLimiter ?? createSubmissionRateLimiter();
 
   app.use(cors({ exposedHeaders: ["X-Page", "X-Total-Pages", "X-Total-Elements", "X-Provider-Errors"] }));
   app.use(express.json());
@@ -54,6 +72,50 @@ export function createApp(eventService = { searchEvents, getEventById, parseEven
     } catch (error) {
       return sendEventError(error, res);
     }
+  });
+
+  app.post("/api/submissions", (req, res: Response, next) => {
+    try {
+      res.locals.submissionInput = validateSubmissionInput(req.body);
+      return next();
+    } catch (error) {
+      if (error instanceof SubmissionValidationError) return res.status(400).json({ error: error.message });
+      throw error;
+    }
+  }, submissionRateLimiter, (req, res: Response) => {
+    const submission = getSubmissionStore().create(res.locals.submissionInput as SubmissionInput);
+    return res.status(201).json({ id: submission.id, status: "pending" });
+  });
+
+  app.use("/api/admin", requireAdmin);
+
+  app.get("/api/admin/submissions", (req, res: Response) => {
+    const rawStatus = req.query.status ?? "pending";
+    if (typeof rawStatus !== "string" || !["pending", "approved", "rejected"].includes(rawStatus)) {
+      return res.status(400).json({ error: "status must be pending, approved, or rejected." });
+    }
+    return res.json(getSubmissionStore().list(rawStatus as SubmissionStatus));
+  });
+
+  app.post("/api/admin/submissions/:id/approve", (req, res: Response) => {
+    const submission = getSubmissionStore().approve(req.params.id);
+    if (!submission) return res.status(404).json({ error: "Submission not found." });
+    return res.json(submission);
+  });
+
+  app.post("/api/admin/submissions/:id/reject", (req, res: Response) => {
+    const reason = req.body?.reason;
+    if (reason !== undefined && (typeof reason !== "string" || reason.length > 500)) {
+      return res.status(400).json({ error: "reason must be text of 500 characters or fewer." });
+    }
+    const submission = getSubmissionStore().reject(req.params.id, typeof reason === "string" ? reason.trim() : undefined);
+    if (!submission) return res.status(404).json({ error: "Submission not found." });
+    return res.json(submission);
+  });
+
+  app.delete("/api/admin/submissions/:id", (req, res: Response) => {
+    if (!getSubmissionStore().remove(req.params.id)) return res.status(404).json({ error: "Submission not found." });
+    return res.status(204).end();
   });
 
   app.get("/api/venues", (_req, res: Response) => {

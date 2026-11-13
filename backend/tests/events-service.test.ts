@@ -3,9 +3,12 @@ import { once } from "node:events";
 import { test } from "node:test";
 
 import { createApp } from "../src/app.js";
+import { createSubmissionStore } from "../src/db/submissions.js";
 import { mapTicketmasterEvent } from "../src/providers/ticketmaster/mapping.js";
+import { createSubmittedProvider } from "../src/providers/submitted/index.js";
+import { ticketmasterProvider } from "../src/providers/ticketmaster/index.js";
 import type { EventProvider, ProviderPage } from "../src/providers/types.js";
-import { EventQueryError, getEventById, parseEventSearchQuery, ProviderError, searchEvents } from "../src/services/events.js";
+import { createEventService, EventQueryError, getEventById, parseEventSearchQuery, ProviderError, searchEvents } from "../src/services/events.js";
 
 function event(id: string, title: string, date: string) {
   const mapped = mapTicketmasterEvent({ id, name: title, dates: { start: { localDate: date } } });
@@ -85,11 +88,13 @@ test("public endpoints preserve unconfigured errors and expose partial failure h
   const tm = provider("ticketmaster", [event("one", "One", "2030-02-01")]);
   const failed = provider("other", []);
   failed.search = async () => { throw new Error("private"); };
+  const store = createSubmissionStore(":memory:");
+  const unavailableService = createEventService([ticketmasterProvider, createSubmittedProvider(store)]);
   const application = createApp({
     parseEventSearchQuery,
-    getEventById,
+    getEventById: unavailableService.getEventById,
     searchEvents: (input) => input.keyword === "unconfigured"
-      ? searchEvents(input)
+      ? unavailableService.searchEvents(input)
       : searchEvents(input, [tm, failed]),
   });
   const server = application.listen(0, "127.0.0.1");
@@ -120,7 +125,9 @@ test("public endpoints preserve unconfigured errors and expose partial failure h
 test("Ticketmaster page metadata reaches public response headers", async () => {
   const priorKey = process.env.TICKETMASTER_API_KEY;
   const priorFetch = globalThis.fetch;
-  const server = createApp().listen(0, "127.0.0.1");
+  const store = createSubmissionStore(":memory:");
+  const service = createEventService([ticketmasterProvider, createSubmittedProvider(store)]);
+  const server = createApp(service, { submissionStore: store }).listen(0, "127.0.0.1");
   try {
     await once(server, "listening");
     const address = server.address();
@@ -160,10 +167,12 @@ test("both real service operations fail when no provider is configured", async (
   const priorKey = process.env.TICKETMASTER_API_KEY;
   try {
     delete process.env.TICKETMASTER_API_KEY;
+    const store = createSubmissionStore(":memory:");
+    const service = createEventService([ticketmasterProvider, createSubmittedProvider(store)]);
     const check = (error: unknown) => error instanceof ProviderError && error.statusCode === 500
       && error.message === "Ticketmaster event service is not configured.";
-    await assert.rejects(searchEvents(query()), check);
-    await assert.rejects(getEventById("123"), check);
+    await assert.rejects(service.searchEvents(query()), check);
+    await assert.rejects(service.getEventById("123"), check);
     assert.throws(() => parseEventSearchQuery({ countryCode: "US", type: "invalid" }), EventQueryError);
   } finally {
     if (priorKey === undefined) delete process.env.TICKETMASTER_API_KEY;

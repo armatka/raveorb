@@ -23,6 +23,12 @@ export class EventsApiError extends Error {
   }
 }
 
+export type EventsApiRequestOptions = {
+  method?: "GET" | "POST" | "DELETE";
+  headers?: Record<string, string>;
+  body?: unknown;
+};
+
 const REQUEST_TIMEOUT_MS = 15_000;
 const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim().replace(/\/+$/, "") ?? "";
 
@@ -42,21 +48,29 @@ function errorMessage(payload: unknown, status: number): string {
   return `The event service returned an error (${status}).`;
 }
 
-export async function requestEventsApi(path: string): Promise<{ payload: unknown; response: Response }> {
+export async function requestEventsApi(
+  path: string,
+  options: EventsApiRequestOptions = {},
+): Promise<{ payload: unknown; response: Response }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
+    const headers: Record<string, string> = { Accept: "application/json", ...options.headers };
+    if (options.body !== undefined) headers["Content-Type"] ??= "application/json";
     const response = await fetch(`${apiBaseUrl}${path}`, {
-      method: "GET",
-      headers: { Accept: "application/json" },
+      method: options.method ?? "GET",
+      headers,
+      ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
       signal: controller.signal,
     });
     let payload: unknown;
-    try {
-      payload = await response.json();
-    } catch (error) {
-      if (response.ok) throw new Error("The event service returned invalid JSON.", { cause: error });
-      payload = null;
+    if (response.status !== 204) {
+      try {
+        payload = await response.json();
+      } catch (error) {
+        if (response.ok) throw new Error("The event service returned invalid JSON.", { cause: error });
+        payload = null;
+      }
     }
     if (!response.ok) throw new EventsApiError(errorMessage(payload, response.status), response.status);
     return { payload, response };

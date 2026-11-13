@@ -1,8 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { createSubmissionStore } from "../src/db/submissions.js";
+import { createSubmittedProvider } from "../src/providers/submitted/index.js";
 import { mapTicketmasterEvent } from "../src/providers/ticketmaster/mapping.js";
-import { getEventById, parseEventSearchQuery as parseTicketmasterQuery, searchEvents as searchTicketmasterEvents, ProviderError as TicketmasterError, EventQueryError as TicketmasterQueryError } from "../src/services/events.js";
+import { ticketmasterProvider } from "../src/providers/ticketmaster/index.js";
+import { getEventById, parseEventSearchQuery as parseTicketmasterQuery, searchEvents as searchEventsWithProviders, ProviderError as TicketmasterError, EventQueryError as TicketmasterQueryError } from "../src/services/events.js";
+
+const isolatedProviders = [ticketmasterProvider, createSubmittedProvider(createSubmissionStore(":memory:"))];
+const searchTicketmasterEvents = (query: Parameters<typeof searchEventsWithProviders>[0]) => searchEventsWithProviders(query, isolatedProviders);
+const getTicketmasterEventById = (id: string) => getEventById(id, isolatedProviders);
 
 test("maps Ticketmaster events to the shared event contract", () => {
   const event = mapTicketmasterEvent({
@@ -201,11 +208,11 @@ test("preserves Ticketmaster options, legacy filters, and request-time configura
     const unfiltered = await searchTicketmasterEvents({ ...filters, providerOptions: { ticketmaster: { classificationName: "Dance", genreId: "123" } }, localStartDate: undefined, localEndDate: undefined });
     assert.equal(unfiltered.events.length, 3);
     assert.equal(urls.length, 1);
-    assert.equal((await getEventById("cache-house"))?.isElectronic, true);
+    assert.equal((await getTicketmasterEventById("cache-house"))?.isElectronic, true);
     assert.equal(urls.length, 2);
     delete process.env.TICKETMASTER_API_KEY;
     await assert.rejects(searchTicketmasterEvents(filters), TicketmasterError);
-    await assert.rejects(getEventById("cache-house"), TicketmasterError);
+    await assert.rejects(getTicketmasterEventById("cache-house"), TicketmasterError);
     assert.equal(urls.length, 2);
   } finally {
     globalThis.fetch = priorFetch;

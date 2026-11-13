@@ -164,8 +164,16 @@ export async function getEventById(id: string, available: readonly EventProvider
   const provider = [...available].sort((a, b) => b.id.length - a.id.length)
     .find((item) => id.startsWith(`${item.id}-`));
   const selected = provider ?? defaultProvider(available);
-  assertConfigured(selected);
+  if (selected.id !== "submitted") assertConfigured(selected);
   const event = await selected.getById(provider ? id.slice(provider.id.length + 1) : id);
   return event ? classifyEvent(event) : null;
+}
+
+export function createEventService(availableProviders: readonly EventProvider[] = providers) {
+  return {
+    parseEventSearchQuery,
+    searchEvents: (query: EventSearchQuery) => searchEvents(query, availableProviders),
+    getEventById: (id: string) => getEventById(id, availableProviders),
+  };
 }
 

@@ -43,6 +43,7 @@ import {
 import { eventStatusStorage, type EventStatus } from "../../lib/eventStatusStorage";
 import { preferencesStorage } from "../../lib/preferencesStorage";
 import { showAlert } from "../../lib/showAlert";
+import { hasEventsApi } from "../../services/eventsApi";
 import { eventsDataMode, eventsRepository } from "../../services/eventsRepository";
 import { isLocationSearchQuery, searchLocations } from "../../services/locationsApi";
 import { colors } from "../../theme/colors";
@@ -348,6 +349,12 @@ export default function EventsScreen() {
           <Text style={styles.locationText} numberOfLines={1}>{locationLabel}</Text>
           <Ionicons name="chevron-down" size={18} color={colors.secondary} />
         </Pressable>
+        {hasEventsApi() ? (
+          <Pressable onPress={() => router.push("/submit-event")} style={styles.submitEventButton} accessibilityRole="button">
+            <Ionicons name="add-circle-outline" size={18} color={colors.background} />
+            <Text style={styles.submitEventText}>Submit an event</Text>
+          </Pressable>
+        ) : null}
       </View>
       {locationError ? (
         <Pressable onPress={() => setRetryToken((token) => token + 1)} style={styles.retryButton} accessibilityRole="button" accessibilityLabel="Retry loading location preference">
@@ -624,6 +631,8 @@ const styles = StyleSheet.create({
   title: { color: colors.text, fontSize: 32, fontWeight: "700" },
   mockNotice: { color: colors.warning, fontSize: 10, fontWeight: "700", marginBottom: spacing.sm },
   locationButton: { minHeight: 44, flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: spacing.xs },
+  submitEventButton: { minHeight: 42, flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: spacing.xs, paddingHorizontal: spacing.md, marginTop: spacing.sm, borderRadius: 8, backgroundColor: colors.primary },
+  submitEventText: { color: colors.background, fontSize: 12, fontWeight: "700" },
   locationText: { color: colors.secondary, fontSize: 17, fontWeight: "700", flexShrink: 1 },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0, 0, 0, 0.65)" },
   // Pads the sheet above the keyboard; flexShrink lets the sheet compress
