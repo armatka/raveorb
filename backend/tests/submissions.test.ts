@@ -6,7 +6,9 @@ import { createSubmissionStore } from "../src/db/submissions.js";
 import { createApp } from "../src/app.js";
 import { createSubmittedProvider } from "../src/providers/submitted/index.js";
 import type { EventProvider } from "../src/providers/types.js";
+import { mapTicketmasterEvent } from "../src/providers/ticketmaster/mapping.js";
 import { createEventService } from "../src/services/events.js";
+import type { EventEntry } from "../src/types/index.js";
 
 const nextDate = () => {
   const date = new Date();
@@ -44,26 +46,34 @@ function submission(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function testService(store: ReturnType<typeof createSubmissionStore>) {
-  const ticketmaster: EventProvider = {
+function ticketmasterStub(ticketmasterEvents: EventEntry[] = []): EventProvider {
+  return {
     id: "ticketmaster",
     displayName: "Ticketmaster",
     isConfigured: () => true,
-    search: async (query) => ({ events: [], page: query.page, totalPages: 0, totalElements: 0 }),
+    search: async (query) => ({ events: ticketmasterEvents, page: query.page, totalPages: 1, totalElements: ticketmasterEvents.length }),
     getById: async () => null,
   };
+}
+
+function testService(store: ReturnType<typeof createSubmissionStore>, ticketmasterEvents: EventEntry[] = []) {
+  const ticketmaster = ticketmasterStub(ticketmasterEvents);
   return createEventService([ticketmaster, createSubmittedProvider(store)]);
 }
 
 async function withServer(
   callback: (base: string, store: ReturnType<typeof createSubmissionStore>) => Promise<void>,
   token?: string,
+  ticketmasterEvents: EventEntry[] = [],
 ) {
   const previousToken = process.env.ADMIN_TOKEN;
   if (token === undefined) delete process.env.ADMIN_TOKEN;
   else process.env.ADMIN_TOKEN = token;
   const store = createSubmissionStore(":memory:");
-  const server = createApp(testService(store), { submissionStore: store }).listen(0, "127.0.0.1");
+  const server = createApp(testService(store, ticketmasterEvents), {
+    submissionStore: store,
+    ticketmasterProvider: ticketmasterStub(ticketmasterEvents),
+  }).listen(0, "127.0.0.1");
   await once(server, "listening");
   const address = server.address();
   assert.ok(address && typeof address !== "string");
@@ -182,6 +192,43 @@ test("admin endpoints require configured bearer auth and support review operatio
     assert.equal((await fetch(`${base}/api/admin/submissions?status=rejected`, { headers: adminHeaders }).then((response) => response.json() as Promise<Array<unknown>>)).length, 1);
     assert.equal((await fetch(`${base}/api/admin/submissions/${id}`, { method: "DELETE", headers: adminHeaders })).status, 204);
   }, "admin-secret");
+});
+
+test("pending admin submissions include matching Ticketmaster events as possible duplicates", async () => {
+  const ticketmaster = mapTicketmasterEvent({
+    id: "tm-duplicate",
+    name: "Community Techno Night",
+    dates: { start: { localDate: nextDate(), localTime: "21:00" }, timezone: "Europe/Paris" },
+    _embedded: {
+      venues: [{
+        name: "The Warehouse",
+        city: { name: "Paris" },
+        country: { countryCode: "FR" },
+        location: { latitude: "48.8566", longitude: "2.3522" },
+      }],
+      attractions: [{ name: "DJ Example" }],
+    },
+  });
+  assert.ok(ticketmaster);
+  await withServer(async (base) => {
+    await fetch(`${base}/api/submissions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(submission()),
+    }).then((response) => assert.equal(response.status, 201));
+    const pending = await fetch(`${base}/api/admin/submissions`, {
+      headers: { Authorization: "Bearer admin-secret" },
+    }).then((response) => response.json()) as Array<{
+      possibleDuplicates: Array<{ id: string; title: string; venueName: string; score: number }>;
+    }>;
+    assert.equal(pending.length, 1);
+    assert.deepEqual(pending[0].possibleDuplicates, [{
+      id: "tm-duplicate",
+      title: "Community Techno Night",
+      venueName: "The Warehouse",
+      score: 1,
+    }]);
+  }, "admin-secret", [ticketmaster]);
 });
 
 test("public submission responses never include submitter email", async () => {

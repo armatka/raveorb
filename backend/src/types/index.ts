@@ -52,6 +52,7 @@ export type EventSubmission = EventSubmissionInput & {
   createdAt: string;
   reviewedAt?: string;
   rejectReason?: string;
+  possibleDuplicates?: { id: string; title: string; venueName: string; score: number }[];
 };
 
 export type TicketmasterClassificationValue = {
@@ -121,6 +122,7 @@ export interface EventEntry {
   ticketSaleEndDateTime?: string;
   ageRestriction?: string;
   status?: EventStatus;
+  alsoListedOn?: { source: string; id: string; eventUrl?: string }[];
 }
 
 export interface Venue {

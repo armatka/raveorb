@@ -113,6 +113,11 @@ export default function AdminReviewScreen() {
               <Text style={styles.cardTitle}>{submission.title}</Text>
               <Text style={styles.detail}>{submission.date} · {submission.startTime}–{submission.endTime} · {submission.timezone}</Text>
               <Text style={styles.detail}>{submission.venueName} · {submission.city}, {submission.countryCode}</Text>
+              {submission.possibleDuplicates?.map((duplicate) => (
+                <Text key={duplicate.id} style={styles.duplicateWarning}>
+                  Possible duplicate of: {duplicate.title} @ {duplicate.venueName}
+                </Text>
+              ))}
               <Text style={styles.detail}>Style: {submission.style}{submission.artists.length ? ` · ${submission.artists.join(", ")}` : ""}</Text>
               <Text style={styles.description}>{submission.description}</Text>
               {submission.submitterEmail ? <Text style={styles.email}>Submitter: {submission.submitterEmail}</Text> : null}
@@ -186,6 +191,7 @@ const styles = StyleSheet.create({
   cardTitle: { color: colors.text, fontSize: 17, fontWeight: "700", marginBottom: spacing.xs },
   detail: { color: colors.textSecondary, fontSize: 12, lineHeight: 19, marginTop: spacing.xs },
   description: { color: colors.text, fontSize: 13, lineHeight: 19, marginTop: spacing.sm },
+  duplicateWarning: { color: colors.error, fontSize: 13, lineHeight: 19, fontWeight: "700", marginTop: spacing.sm },
   email: { color: colors.secondary, fontSize: 12, marginTop: spacing.sm },
   reasonInput: { minHeight: 42, color: colors.text, backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1, borderRadius: 8, paddingHorizontal: spacing.sm, marginTop: spacing.md },
   actionRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.sm },
