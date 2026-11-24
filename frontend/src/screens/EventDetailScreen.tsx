@@ -3,6 +3,7 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -290,6 +291,38 @@ export default function EventDetailScreen() {
         ) : null}
       </View>
 
+      {event.alsoListedOn?.length ? (
+        <View style={styles.panel}>
+          {event.alsoListedOn.map((listing) => {
+            const label = listing.source === "ticketmaster"
+              ? "Also listed on Ticketmaster"
+              : listing.source === "submitted"
+                ? "Also listed by the community"
+                : `Also listed on ${listing.source}`;
+            const eventUrl = listing.eventUrl;
+            return eventUrl ? (
+              <Pressable
+                key={`${listing.source}:${listing.id}`}
+                onPress={() => {
+                  void Linking.openURL(eventUrl).catch(() => showAlert("Could not open link", "Please try again later."));
+                }}
+                style={styles.detailRow}
+                accessibilityRole="link"
+                accessibilityLabel={label}
+              >
+                <Ionicons name="open-outline" size={18} color={colors.secondary} />
+                <Text style={styles.listingLink}>{label}</Text>
+              </Pressable>
+            ) : (
+              <View key={`${listing.source}:${listing.id}`} style={styles.detailRow}>
+                <Ionicons name="information-circle-outline" size={18} color={colors.secondary} />
+                <Text style={styles.detailText}>{label}</Text>
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
+
       {event.source === "ticketmaster" ? (
         <View style={styles.panel}>
           <Text style={styles.sectionTitle}>Ticketmaster source</Text>
@@ -515,6 +548,12 @@ const styles = StyleSheet.create({
     flex: 1,
     color: colors.textSecondary,
     fontSize: 14,
+  },
+  listingLink: {
+    flex: 1,
+    color: colors.secondary,
+    fontSize: 14,
+    textDecorationLine: "underline",
   },
   notFound: {
     flex: 1,

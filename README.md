@@ -65,7 +65,26 @@ The event list returns normalized event records and pagination metadata in `X-Pa
 
 ## Event providers
 
-The backend's `src/providers/types.ts` defines the provider contract, `src/providers/registry.ts` registers adapters, and `src/services/events.ts` validates searches, classifies events, and coordinates providers. Ticketmaster's adapter and mapping live in `src/providers/ticketmaster/`. A partial search failure is reported by provider ID in the `X-Provider-Errors` header. When only one provider contributes events, its result order is preserved; events from multiple providers are concatenated and date-sorted. One successful provider retains its pagination; multiple successful pages use summed totals and the maximum page count. Cross-provider pagination and deduplication are not yet implemented.
+The backend's `src/providers/types.ts` defines the provider contract, `src/providers/registry.ts` registers adapters, and `src/services/events.ts` validates searches, deduplicates results, classifies events, and coordinates providers. Ticketmaster's adapter and mapping live in `src/providers/ticketmaster/`. A partial search failure is reported by provider ID in the `X-Provider-Errors` header. When only one provider contributes events, its result order is preserved; events from multiple providers are date-sorted. One successful provider retains its pagination; multiple successful pages use summed totals and the maximum page count. Cross-provider pagination is not implemented.
+
+### Community submissions and moderation
+
+`POST /api/submissions` accepts an event submission and returns its ID with `status: "pending"`. Submission fields include title, local date and time, timezone, venue/address/location, artists, style, and description; ticket URL, price, currency, age restriction, and submitter email are optional. Submissions are rate-limited and validated, and submitter email is not returned by the public submission response or event listing.
+
+Admin requests use `Authorization: Bearer <ADMIN_TOKEN>`. The endpoints are:
+
+- `GET /api/admin/submissions?status=pending|approved|rejected` (defaults to pending). Pending entries include `possibleDuplicates` when a likely Ticketmaster match is found.
+- `POST /api/admin/submissions/:id/approve`
+- `POST /api/admin/submissions/:id/reject` with an optional `{ "reason": "..." }` body
+- `DELETE /api/admin/submissions/:id`
+
+Configure a strong `ADMIN_TOKEN` on the backend. The submission database defaults to `backend/data/raveorb.db`; set `DATABASE_PATH` to use another database file. Pending submissions are private until an administrator approves them. Approved submissions become searchable community events; rejected submissions remain available in the admin list with their reason unless deleted.
+
+Events from different providers are deduplicated within the returned provider pages. Two events are considered likely duplicates when their local dates match (or are one day apart with start times within four hours across midnight), the venue is within 300 metres or its normalized name matches closely in the same locality, and their normalized titles overlap by at least 0.6 or they share an artist. Normalization ignores generic words such as “presents,” “live,” “the,” and “tickets,” and removes each event's own city and region from its title and venue. The primary listing prefers an event with a ticket URL, then Ticketmaster, then the entry with more filled fields. It carries an `alsoListedOn` list, and missing description, artist, and image fields are filled from duplicates. `GET /api/events/:id` continues to resolve IDs for listings that were merged out of search results so saved Nights and statuses continue to work.
+
+Known limitation: community submissions are only returned on provider page 0. A Ticketmaster duplicate on a later page will not be merged; the possible-duplicate warning in the pending admin list is the main safeguard.
+
+Event detail lookups also check the other provider for matches on the local date or adjacent dates and apply the same primary-selection and field-merge rules, including `alsoListedOn`. The response can therefore use the primary listing's ID even when requested through another listing's ID. Ticketmaster duplicate searches use a 1 km radius when coordinates are available (otherwise city and country) and are cached for five minutes; local approved submissions are checked on each request so moderation changes are reflected immediately. If Ticketmaster is unconfigured or this optional duplicate search fails, community event details remain available without duplicate enrichment.
 
 To add a provider:
 1. Implement `EventProvider`, mapping its results to `EventEntry` and reading credentials at request time.
@@ -88,6 +107,8 @@ City search is provided by [Open-Meteo.com](https://open-meteo.com), with geocod
 - `EXPO_PUBLIC_API_BASE_URL`: frontend backend origin, with no `/api` suffix. Leave it unset for the clearly labeled development sample catalog. See Ticketmaster Discovery above for local and device examples. Expo public variables are embedded in the app and must not contain secrets.
 - `PORT`: optional backend listening port, default `3000`. If changed, update the frontend API origin accordingly.
 - `TICKETMASTER_API_KEY`: required backend-only Ticketmaster Discovery API credential. Configure in `backend/.env`; never expose it through the frontend.
+- `ADMIN_TOKEN`: optional bearer token required by all `/api/admin` endpoints. Without it, admin review is unavailable.
+- `DATABASE_PATH`: optional path to the SQLite submissions database. Defaults to `backend/data/raveorb.db`.
 
 ## Checks
 

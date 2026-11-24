@@ -2,6 +2,7 @@ import { EventQueryError, ProviderError, type EventProvider, type EventSearchQue
 import { providers } from "../providers/registry.js";
 import type { EventEntry } from "../types/index.js";
 import { classifyElectronicEvent } from "./electronicClassification.js";
+import { deduplicateEvents, isLikelySameEvent } from "./deduplication.js";
 
 export { EventQueryError, ProviderError } from "../providers/types.js";
 
@@ -122,6 +123,77 @@ function assertConfigured(provider: EventProvider): void {
 
 export type EventSearchResult = ProviderPage & { providerErrors: string[] };
 
+const duplicateLookupTtlMs = 5 * 60 * 1000;
+const maxDuplicateLookupEntries = 200;
+const duplicateLookupCaches = new WeakMap<EventProvider, Map<string, { expiresAt: number; events: EventEntry[] }>>();
+
+function adjacentDate(date: string, days: number): string {
+  const timestamp = Date.parse(`${date}T00:00:00Z`);
+  return new Date(timestamp + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+async function findDetailDuplicates(event: EventEntry, available: readonly EventProvider[]): Promise<EventEntry[]> {
+  const otherProviderId = event.source === "ticketmaster" ? "submitted"
+    : event.source === "submitted" ? "ticketmaster" : undefined;
+  const otherProvider = available.find((provider) => provider.id === otherProviderId);
+  if (!otherProvider || !otherProvider.isConfigured()) return [];
+
+  const localStartDate = adjacentDate(event.date, -1);
+  const localEndDate = adjacentDate(event.date, 1);
+  const hasCoordinates = event.latitude !== undefined && event.longitude !== undefined;
+  const query: EventSearchQuery = {
+    ...(otherProvider.id === "ticketmaster" && hasCoordinates
+      ? { latlong: `${event.latitude},${event.longitude}` }
+      : { city: event.city, countryCode: event.countryCode }),
+    ...(otherProvider.id === "ticketmaster" ? { radius: 1 } : {}),
+    unit: "km",
+    localStartDate,
+    localEndDate,
+    // Pad the UTC request window so local dates at either timezone extreme are included.
+    startDateTime: `${adjacentDate(localStartDate, -1)}T00:00:00Z`,
+    endDateTime: `${adjacentDate(localEndDate, 1)}T23:59:59Z`,
+    page: 0,
+    size: 50,
+    sort: "date,asc",
+    providerOptions: {},
+  };
+  if (otherProvider.id === "submitted") {
+    const page = await otherProvider.search(query);
+    return page.events.filter((candidate) => isLikelySameEvent(event, candidate).match);
+  }
+
+  let cache = duplicateLookupCaches.get(otherProvider);
+  if (!cache) {
+    cache = new Map();
+    duplicateLookupCaches.set(otherProvider, cache);
+  }
+  const key = JSON.stringify(query);
+  const cached = cache.get(key);
+  let candidates: EventEntry[];
+  if (cached && cached.expiresAt > Date.now()) {
+    candidates = cached.events;
+  } else {
+    cache.delete(key);
+    try {
+      const page = await otherProvider.search(query);
+      candidates = structuredClone(page.events);
+    } catch (error) {
+      console.error("Event detail duplicate lookup failed", {
+        provider: otherProvider.id,
+        kind: error instanceof ProviderError ? error.kind : "internal",
+        ...(error instanceof ProviderError ? { statusCode: error.statusCode, upstreamStatus: error.upstreamStatus } : {}),
+      });
+      return [];
+    }
+    if (cache.size >= maxDuplicateLookupEntries) {
+      const oldest = cache.keys().next().value;
+      if (oldest !== undefined) cache.delete(oldest);
+    }
+    cache.set(key, { events: candidates, expiresAt: Date.now() + duplicateLookupTtlMs });
+  }
+  return structuredClone(candidates.filter((candidate) => isLikelySameEvent(event, candidate).match));
+}
+
 export async function searchEvents(query: EventSearchQuery, available: readonly EventProvider[] = providers): Promise<EventSearchResult> {
   const configured = available.filter((provider) => provider.isConfigured());
   if (!configured.length) {
@@ -143,10 +215,10 @@ export async function searchEvents(query: EventSearchQuery, available: readonly 
       ...(error instanceof ProviderError ? { statusCode: error.statusCode, upstreamStatus: error.upstreamStatus } : {}),
     });
   }
-  const eventLists = pages.map((page) => page.events.map(classifyEvent)
-    .filter((event) => !query.electronicOnly || event.isElectronic));
-  const events = eventLists.flat();
-  if (eventLists.filter((list) => list.length > 0).length > 1) {
+  const mergedEvents = deduplicateEvents(pages.flatMap((page) => page.events));
+  const events = mergedEvents.map(classifyEvent)
+    .filter((event) => !query.electronicOnly || event.isElectronic);
+  if (pages.filter((page) => page.events.length > 0).length > 1) {
     const direction = query.sort === "date,desc" ? -1 : 1;
     events.sort((first, second) => direction * (`${first.date}T${first.startTime}`.localeCompare(`${second.date}T${second.startTime}`)));
   }
@@ -166,7 +238,10 @@ export async function getEventById(id: string, available: readonly EventProvider
   const selected = provider ?? defaultProvider(available);
   if (selected.id !== "submitted") assertConfigured(selected);
   const event = await selected.getById(provider ? id.slice(provider.id.length + 1) : id);
-  return event ? classifyEvent(event) : null;
+  if (!event) return null;
+  const duplicates = await findDetailDuplicates(event, available);
+  const merged = deduplicateEvents([event, ...duplicates])[0];
+  return classifyEvent(merged);
 }
 
 export function createEventService(availableProviders: readonly EventProvider[] = providers) {

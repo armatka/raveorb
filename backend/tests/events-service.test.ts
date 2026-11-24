@@ -8,6 +8,7 @@ import { mapTicketmasterEvent } from "../src/providers/ticketmaster/mapping.js";
 import { createSubmittedProvider } from "../src/providers/submitted/index.js";
 import { ticketmasterProvider } from "../src/providers/ticketmaster/index.js";
 import type { EventProvider, ProviderPage } from "../src/providers/types.js";
+import type { EventEntry } from "../src/types/index.js";
 import { createEventService, EventQueryError, getEventById, parseEventSearchQuery, ProviderError, searchEvents } from "../src/services/events.js";
 
 function event(id: string, title: string, date: string) {
@@ -57,6 +58,196 @@ test("merges successful pages by date and reports failures without exposing erro
   assert.deepEqual(descending.events.map((item) => item.id), ["late", "other-early"]);
   const singleSuccess = await searchEvents(query(), [failed, a]);
   assert.deepEqual(singleSuccess.events.map((item) => item.id), ["late"]);
+});
+
+test("deduplicates cross-provider events while preserving lookup by the merged-away ID", async () => {
+  const ticketmaster = event("same-show", "Charlotte de Witte", "2030-06-07");
+  Object.assign(ticketmaster, {
+    venueName: "The Warehouse",
+    city: "Montreal",
+    countryCode: "CA",
+    latitude: 45.5017,
+    longitude: -73.5673,
+    artists: ["Charlotte de Witte"],
+  });
+  const submission: EventEntry = {
+    ...ticketmaster,
+    id: "submitted-community",
+    source: "submitted",
+    sourceEventId: "community",
+    ticketUrl: undefined,
+    eventUrl: undefined,
+    description: "Community event details",
+  };
+  const tm = provider("ticketmaster", [ticketmaster]);
+  const submitted: EventProvider = {
+    ...provider("submitted", [submission]),
+    getById: async (id) => id === "community" ? submission : null,
+  };
+  const service = createEventService([tm, submitted]);
+  const result = await service.searchEvents(query());
+  assert.equal(result.events.length, 1);
+  assert.equal(result.events[0].id, ticketmaster.id);
+  assert.deepEqual(result.events[0].alsoListedOn, [{
+    source: "submitted",
+    id: submission.id,
+  }]);
+  assert.equal(result.events[0].description, "Community event details");
+  assert.deepEqual(await service.getEventById("submitted-community"), result.events[0]);
+});
+
+test("Ticketmaster detail includes approved adjacent-night submissions and fresh moderation changes", async () => {
+  const store = createSubmissionStore(":memory:");
+  const date = new Date(Date.now() + 5 * 86_400_000).toISOString().slice(0, 10);
+  const nextDate = new Date(Date.parse(`${date}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+  const tmEvent = {
+    ...event("detail-tm", "Warehouse Techno", date),
+    city: "Montreal",
+    countryCode: "CA",
+    venueName: "Warehouse",
+    startTime: "23:00",
+    timezone: "America/Toronto",
+    ticketUrl: "https://ticketmaster.example.test/tickets",
+  };
+  const input = {
+    title: tmEvent.title,
+    date: nextDate,
+    startTime: "00:30",
+    endTime: "04:00",
+    timezone: tmEvent.timezone,
+    venueName: tmEvent.venueName,
+    address: "10 Example Street",
+    city: tmEvent.city,
+    countryCode: tmEvent.countryCode,
+    latitude: 45.5017,
+    longitude: -73.5673,
+    artists: ["DJ Example"],
+    style: "Techno" as const,
+    description: "Community details",
+    ticketUrl: "https://community.example.test/tickets",
+  };
+  const approved = store.create(input);
+  store.approve(approved.id);
+  store.create(input);
+  const service = createEventService([
+    provider("ticketmaster", [tmEvent]),
+    createSubmittedProvider(store),
+  ]);
+  const detail = await service.getEventById(tmEvent.id);
+  assert.equal(detail?.id, tmEvent.id);
+  assert.equal(detail?.description, input.description);
+  assert.deepEqual(detail?.artists, input.artists);
+  assert.deepEqual(detail?.alsoListedOn, [{
+    source: "submitted",
+    id: `submitted-${approved.id}`,
+    eventUrl: input.ticketUrl,
+  }]);
+  store.reject(approved.id);
+  assert.equal((await service.getEventById(tmEvent.id))?.alsoListedOn, undefined);
+});
+
+function detailPair() {
+  const tmEvent: EventEntry = {
+    ...event("detail-match", "Warehouse Techno", "2030-06-07"),
+    venueName: "Warehouse",
+    city: "Montreal",
+    countryCode: "CA",
+    latitude: 45.5017,
+    longitude: -73.5673,
+    ticketUrl: "https://ticketmaster.example.test/tickets",
+    eventUrl: "https://ticketmaster.example.test/event",
+    imageUrl: "https://ticketmaster.example.test/image",
+  };
+  const submission: EventEntry = {
+    ...tmEvent,
+    id: "submitted-detail",
+    source: "submitted",
+    sourceEventId: "detail",
+    ticketUrl: "https://community.example.test/tickets",
+    eventUrl: "https://community.example.test/event",
+    description: "Community details",
+    imageUrl: undefined,
+  };
+  return { tmEvent, submission };
+}
+
+test("submitted detail uses list merge rules and a 1 km Ticketmaster search cached for five minutes", async (context) => {
+  const { tmEvent, submission } = detailPair();
+  const tm = provider("ticketmaster", [tmEvent]);
+  const submitted = provider("submitted", [submission]);
+  const seen: Parameters<EventProvider["search"]>[0][] = [];
+  tm.search = async (query) => {
+    seen.push(query);
+    return { events: [tmEvent], page: 0, totalPages: 1, totalElements: 1 };
+  };
+  let now = Date.now();
+  context.mock.method(Date, "now", () => now);
+  const service = createEventService([tm, submitted]);
+  const detail = await service.getEventById(submission.id);
+  assert.equal(detail?.id, tmEvent.id);
+  assert.equal(detail?.description, submission.description);
+  assert.equal(detail?.imageUrl, tmEvent.imageUrl);
+  assert.deepEqual(detail?.alsoListedOn, [{
+    source: "submitted",
+    id: submission.id,
+    eventUrl: submission.eventUrl,
+  }]);
+  assert.equal(seen[0].latlong, "45.5017,-73.5673");
+  assert.equal(seen[0].city, undefined);
+  assert.equal(seen[0].radius, 1);
+  assert.equal(seen[0].unit, "km");
+  assert.equal(seen[0].localStartDate, "2030-06-06");
+  assert.equal(seen[0].localEndDate, "2030-06-08");
+  await service.getEventById(submission.id);
+  assert.equal(seen.length, 1);
+  now += 5 * 60 * 1000;
+  await service.getEventById(submission.id);
+  assert.equal(seen.length, 2);
+});
+
+test("submitted detail searches by city and country when coordinates are missing", async () => {
+  const { tmEvent, submission } = detailPair();
+  submission.latitude = undefined;
+  submission.longitude = undefined;
+  // Prefer the community listing so its Ticketmaster duplicate is shown directly.
+  tmEvent.ticketUrl = undefined;
+  const tm = provider("ticketmaster", [tmEvent]);
+  const search = tm.search;
+  tm.search = async (query) => {
+    assert.equal(query.latlong, undefined);
+    assert.equal(query.city, submission.city);
+    assert.equal(query.countryCode, submission.countryCode);
+    assert.equal(query.radius, 1);
+    return search(query);
+  };
+  const detail = await getEventById(submission.id, [tm, provider("submitted", [submission])]);
+  assert.equal(detail?.id, submission.id);
+  assert.deepEqual(detail?.alsoListedOn, [{
+    source: "ticketmaster",
+    id: tmEvent.id,
+    eventUrl: tmEvent.eventUrl,
+  }]);
+  assert.equal(detail?.imageUrl, tmEvent.imageUrl);
+});
+
+test("Ticketmaster enrichment failure or missing configuration still returns submitted detail", async () => {
+  const { tmEvent, submission } = detailPair();
+  const tm = provider("ticketmaster", [tmEvent]);
+  const service = createEventService([tm, provider("submitted", [submission])]);
+  let calls = 0;
+  tm.search = async () => {
+    calls++;
+    throw new ProviderError("Ticketmaster is temporarily unavailable.", 502, "network");
+  };
+  const detail = await service.getEventById(submission.id);
+  assert.equal(detail?.id, submission.id);
+  assert.equal(detail?.alsoListedOn, undefined);
+  assert.equal(detail?.isElectronic, true);
+  await service.getEventById(submission.id);
+  assert.equal(calls, 2);
+  tm.isConfigured = () => false;
+  assert.deepEqual(await service.getEventById(submission.id), detail);
+  assert.equal(calls, 2);
 });
 
 test("all failed providers propagate the original error", async () => {

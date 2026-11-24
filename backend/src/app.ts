@@ -3,9 +3,13 @@ import express, { type ErrorRequestHandler, type RequestHandler, type Response }
 
 import { getDefaultSubmissionStore, type SubmissionInput, type SubmissionStatus, type SubmissionStore } from "./db/submissions.js";
 import { events, venues } from "./data/mockData.js";
+import type { EventEntry } from "./types/index.js";
 import { getStats } from "./services/stats.js";
 import { GeocodingError, GeocodingQueryError, searchCities } from "./services/geocoding.js";
 import { getEventById, parseEventSearchQuery, searchEvents, ProviderError, EventQueryError } from "./services/events.js";
+import { isLikelySameEvent } from "./services/deduplication.js";
+import { ticketmasterProvider as registeredTicketmasterProvider } from "./providers/ticketmaster/index.js";
+import type { EventProvider } from "./providers/types.js";
 import { createSubmissionRateLimiter, requireAdmin, SubmissionValidationError, validateSubmissionInput } from "./services/submissions.js";
 
 type EventService = {
@@ -17,7 +21,14 @@ type EventService = {
 type AppOptions = {
   submissionStore?: SubmissionStore;
   submissionRateLimiter?: RequestHandler;
+  ticketmasterProvider?: EventProvider;
 };
+
+function shiftDate(value: string, days: number): string {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + days));
+  return date.toISOString().slice(0, 10);
+}
 
 export function createApp(
   eventService: EventService = { searchEvents, getEventById, parseEventSearchQuery },
@@ -26,6 +37,7 @@ export function createApp(
   const app = express();
   const getSubmissionStore = () => options.submissionStore ?? getDefaultSubmissionStore();
   const submissionRateLimiter = options.submissionRateLimiter ?? createSubmissionRateLimiter();
+  const reviewProvider = options.ticketmasterProvider ?? registeredTicketmasterProvider;
 
   app.use(cors({ exposedHeaders: ["X-Page", "X-Total-Pages", "X-Total-Elements", "X-Provider-Errors"] }));
   app.use(express.json());
@@ -89,12 +101,71 @@ export function createApp(
 
   app.use("/api/admin", requireAdmin);
 
-  app.get("/api/admin/submissions", (req, res: Response) => {
+  app.get("/api/admin/submissions", async (req, res: Response) => {
     const rawStatus = req.query.status ?? "pending";
     if (typeof rawStatus !== "string" || !["pending", "approved", "rejected"].includes(rawStatus)) {
       return res.status(400).json({ error: "status must be pending, approved, or rejected." });
     }
-    return res.json(getSubmissionStore().list(rawStatus as SubmissionStatus));
+    const submissions = getSubmissionStore().list(rawStatus as SubmissionStatus);
+    if (rawStatus !== "pending" || !submissions.length) return res.json(submissions);
+    try {
+      const searches = new Map<string, Promise<EventEntry[]>>();
+      for (const submission of submissions) {
+        const key = `${submission.date}|${submission.city}|${submission.countryCode}`;
+        if (!searches.has(key)) {
+          if (!reviewProvider.isConfigured()) {
+            searches.set(key, Promise.resolve([]));
+          } else {
+            const query = eventService.parseEventSearchQuery({
+              city: submission.city,
+              countryCode: submission.countryCode,
+              startDate: shiftDate(submission.date, -1),
+              endDate: shiftDate(submission.date, 1),
+              page: "0",
+              size: "50",
+            });
+            searches.set(key, reviewProvider.search(query).then((page) => page.events));
+          }
+        }
+      }
+      const pages = new Map<string, EventEntry[]>();
+      await Promise.all([...searches].map(async ([key, result]) => pages.set(key, await result)));
+      const enriched = submissions.map((submission) => {
+        const key = `${submission.date}|${submission.city}|${submission.countryCode}`;
+        const ticketmasterEvents = pages.get(key)!;
+        const candidate: EventEntry = {
+          id: `submitted-${submission.id}`,
+          source: "submitted",
+          title: submission.title,
+          type: submission.style === "Festival" ? "festival" : "rave",
+          venueId: `submitted-${submission.id}`,
+          venueName: submission.venueName,
+          city: submission.city,
+          countryCode: submission.countryCode,
+          province: submission.region,
+          latitude: submission.latitude,
+          longitude: submission.longitude,
+          date: submission.date,
+          startTime: submission.startTime,
+          endTime: submission.endTime,
+          timezone: submission.timezone,
+          artists: submission.artists,
+          genres: [submission.style],
+          description: submission.description,
+        };
+        const possibleDuplicates = ticketmasterEvents
+          .flatMap((event) => {
+            const result = isLikelySameEvent(candidate, event);
+            return result.match
+              ? [{ id: event.id, title: event.title, venueName: event.venueName, score: result.score }]
+              : [];
+          });
+        return { ...submission, possibleDuplicates };
+      });
+      return res.json(enriched);
+    } catch (error) {
+      return sendEventError(error, res);
+    }
   });
 
   app.post("/api/admin/submissions/:id/approve", (req, res: Response) => {
