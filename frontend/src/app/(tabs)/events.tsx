@@ -41,6 +41,9 @@ import {
   type DiscoveryRadiusKm,
 } from "../../lib/discoveryLocation";
 import { eventStatusStorage, type EventStatus } from "../../lib/eventStatusStorage";
+import type { FollowedArtist } from "../../lib/artistMatching";
+import { followedArtistsStorage } from "../../lib/followedArtistsStorage";
+import { searchFollowedArtistEvents } from "../../services/artistAlertsService";
 import { preferencesStorage } from "../../lib/preferencesStorage";
 import { showAlert } from "../../lib/showAlert";
 import { hasEventsApi } from "../../services/eventsApi";
@@ -112,6 +115,11 @@ export default function EventsScreen() {
   const [totalPages, setTotalPages] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [followedArtists, setFollowedArtists] = useState<FollowedArtist[]>([]);
+  const [followingEvents, setFollowingEvents] = useState<EventEntry[]>([]);
+  const [followingLoading, setFollowingLoading] = useState(false);
+  const [followingFailed, setFollowingFailed] = useState(0);
+  const following = selectedCategory === "following";
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(query.trim()), 300);
@@ -124,10 +132,24 @@ export default function EventsScreen() {
   }, [defaultDateRange]);
 
   useEffect(() => {
-    if (favouriteCategories.length === 0 && selectedCategory === "favourites") {
+    if ((favouriteCategories.length === 0 && selectedCategory === "favourites") || (followedArtists.length === 0 && selectedCategory === "following")) {
       setSelectedCategory("all");
     }
-  }, [favouriteCategories, selectedCategory]);
+  }, [favouriteCategories, followedArtists, selectedCategory]);
+
+  useEffect(() => {
+    if (!following || !locationReady || followedArtists.length === 0) return;
+    let isCurrent = true;
+    setFollowingLoading(true);
+    setFollowingFailed(0);
+    setFollowingEvents([]);
+    searchFollowedArtistEvents(followedArtists, { location, radiusKm }).then((result) => {
+      if (!isCurrent) return;
+      setFollowingEvents(result.events);
+      setFollowingFailed(result.failed.length);
+    }).finally(() => { if (isCurrent) setFollowingLoading(false); });
+    return () => { isCurrent = false; };
+  }, [following, followedArtists, location, locationReady, radiusKm, retryToken]);
 
   useEffect(() => {
     const search = locationSearch.trim();
@@ -152,9 +174,10 @@ export default function EventsScreen() {
       let isCurrent = true;
       setNow(new Date());
       setLocationReady(false);
-      Promise.allSettled([eventStatusStorage.list(), loadDiscoverySettings()])
-        .then(([statusResult, preferencesResult]) => {
+      Promise.allSettled([eventStatusStorage.list(), loadDiscoverySettings(), followedArtistsStorage.list()])
+        .then(([statusResult, preferencesResult, followedResult]) => {
           if (!isCurrent) return;
+          if (followedResult.status === "fulfilled") setFollowedArtists(followedResult.value);
           if (statusResult.status === "fulfilled") setStatuses(statusResult.value);
           setStatusLoadError(statusResult.status === "rejected");
           if (preferencesResult.status === "fulfilled") {
@@ -209,19 +232,21 @@ export default function EventsScreen() {
     }, [debouncedQuery, location, locationReady, radiusKm, retryToken]),
   );
 
+  const followedKeys = useMemo(() => new Set(followedArtists.map((artist) => artist.normalizedName)), [followedArtists]);
   const visibleEvents = useMemo(() => {
-    const filtered = filterDiscoveryEvents(events, query, {
+    const filtered = filterDiscoveryEvents(following ? followingEvents : events, query, {
       city: location?.city ?? null,
       hasCoordinates: eventsDataMode === "api" && hasDiscoveryCoordinates(location),
       genres: [],
       type: "all",
       dateRange,
+      ...(following ? { followedArtists: followedKeys } : {}),
     }, now);
     return filterElectronicDiscoveryEvents(filtered, query, selectedCategory, favouriteCategories);
-  }, [dateRange, events, favouriteCategories, location, now, query, selectedCategory]);
+  }, [dateRange, events, favouriteCategories, followedKeys, following, followingEvents, location, now, query, selectedCategory]);
   const sections = useMemo(() => groupDiscoveryEvents(visibleEvents, now), [now, visibleEvents]);
   const isFiltered = Boolean(query.trim()) || selectedCategory !== "all" || dateRange !== "all-upcoming";
-  const hasMore = eventsDataMode === "api" && page + 1 < totalPages;
+  const hasMore = !following && eventsDataMode === "api" && page + 1 < totalPages;
 
   const clearAll = () => {
     setQuery("");
@@ -329,9 +354,11 @@ export default function EventsScreen() {
   const showSelectedCustomLocation = location !== null && !selectedIsPreset && !isSavedLocation(location) && location.label.toLocaleLowerCase().includes(locationSearchValue);
   const hasLocationChoice = PRESET_DISCOVERY_LOCATIONS.some((option) => option.city.toLocaleLowerCase() === locationSearchValue)
     || (location !== null && location.city.toLocaleLowerCase() === locationSearchValue);
-  const discoveryCategoryOptions = favouriteCategories.length > 0
-    ? [{ label: "My styles", value: "favourites" as ElectronicDiscoveryCategory }, ...primaryCategoryOptions]
-    : primaryCategoryOptions;
+  const discoveryCategoryOptions = [
+    ...(followedArtists.length > 0 ? [{ label: "Following", value: "following" as ElectronicDiscoveryCategory }] : []),
+    ...(favouriteCategories.length > 0 ? [{ label: "My styles", value: "favourites" as ElectronicDiscoveryCategory }] : []),
+    ...primaryCategoryOptions,
+  ];
 
   const listHeader = (
     <View style={styles.headerContent}>
@@ -392,6 +419,11 @@ export default function EventsScreen() {
       </Pressable>
       {showMoreCategories ? <FilterRail label="MORE STYLES" options={secondaryCategoryOptions} selectedValues={[selectedCategory]} onSelect={(value) => setSelectedCategory(value as ElectronicDiscoveryCategory)} /> : null}
       <FilterRail label="WHEN" options={dateRangeOptions} selectedValues={[dateRange]} onSelect={(value) => setDateRange(value as DiscoveryDateRange)} />
+      {following && followingFailed > 0 && !followingLoading ? (
+        <Pressable onPress={() => setRetryToken((token) => token + 1)} style={styles.retryButton} accessibilityRole="button" accessibilityLabel="Retry searching followed artists">
+          <Text style={styles.retryText}>{followingFailed === 1 ? "1 followed artist" : `${followingFailed} followed artists`} could not be searched. Retry</Text>
+        </Pressable>
+      ) : null}
       <View style={styles.resultsRow}>
         <Text style={styles.resultCount}>{visibleEvents.length} {visibleEvents.length === 1 ? "event" : "events"}</Text>
         {isFiltered ? (
@@ -403,21 +435,25 @@ export default function EventsScreen() {
       {isFiltered ? (
         <View style={styles.activeFilters}>
           {query.trim() ? <ActiveFilter label={`Search: ${query.trim()}`} onRemove={() => setQuery("")} /> : null}
-          {selectedCategory !== "all" ? <ActiveFilter label={primaryCategoryOptions.concat(secondaryCategoryOptions).find((option) => option.value === selectedCategory)?.label ?? selectedCategory} onRemove={() => setSelectedCategory("all")} /> : null}
+          {selectedCategory !== "all" ? <ActiveFilter label={discoveryCategoryOptions.concat(secondaryCategoryOptions).find((option) => option.value === selectedCategory)?.label ?? selectedCategory} onRemove={() => setSelectedCategory("all")} /> : null}
           {dateRange !== "all-upcoming" ? <ActiveFilter label={dateRangeOptions.find((option) => option.value === dateRange)?.label ?? dateRange} onRemove={() => setDateRange("all-upcoming")} /> : null}
         </View>
       ) : null}
     </View>
   );
 
-  const emptyMessage = eventLoadError
+  const emptyMessage = following
+    ? followingFailed > 0 && followingFailed === followedArtists.length
+      ? { title: "Following unavailable", message: "Events for artists you follow could not be loaded." }
+      : { title: "No events from artists you follow", message: location ? `No upcoming events in the next 90 days near ${location.city}.` : "No upcoming events in the next 90 days." }
+    : eventLoadError
     ? { title: "Discovery unavailable", message: eventLoadError }
     : { title: "No events found", message: location ? `No events found in ${location.city} with these filters.` : "No events found with these filters." };
 
   return (
     <Screen edges={["top", "left", "right"]} style={styles.container}>
       <SectionList
-        sections={eventLoadError ? [] : sections}
+        sections={(eventLoadError && !following) || (following && followingLoading) ? [] : sections}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshEvents} tintColor={colors.primary} colors={[colors.primary]} />}
         keyExtractor={(event) => event.id}
         renderItem={({ item }) => (
@@ -427,7 +463,7 @@ export default function EventsScreen() {
         ItemSeparatorComponent={ItemSeparator}
         ListHeaderComponent={listHeader}
         ListFooterComponent={hasMore ? <Pressable onPress={() => { void loadMore(); }} style={styles.loadMoreButton} disabled={loadingMore} accessibilityRole="button" accessibilityLabel="Load more events">{loadingMore ? <ActivityIndicator color={colors.background} /> : <Text style={styles.loadMoreText}>Load more</Text>}</Pressable> : undefined}
-        ListEmptyComponent={loadingEvents ? <ActivityIndicator color={colors.primary} style={styles.emptyLoader} /> : <EmptyDiscovery title={emptyMessage.title} message={emptyMessage.message} actionLabel={eventLoadError ? "Retry" : "Clear filters"} onAction={eventLoadError ? () => setRetryToken((token) => token + 1) : clearAll} onViewAll={!eventLoadError && location ? () => { void selectLocation(null); } : undefined} onLoadMore={!eventLoadError && hasMore ? () => { void loadMore(); } : undefined} loadingMore={loadingMore} />}
+        ListEmptyComponent={loadingEvents || (following && followingLoading) ? <ActivityIndicator color={colors.primary} style={styles.emptyLoader} /> : <EmptyDiscovery title={emptyMessage.title} message={emptyMessage.message} actionLabel={eventLoadError && !following ? "Retry" : "Clear filters"} onAction={eventLoadError && !following ? () => setRetryToken((token) => token + 1) : clearAll} onViewAll={!eventLoadError && location ? () => { void selectLocation(null); } : undefined} onLoadMore={!eventLoadError && hasMore ? () => { void loadMore(); } : undefined} loadingMore={loadingMore} />}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         stickySectionHeadersEnabled={false}

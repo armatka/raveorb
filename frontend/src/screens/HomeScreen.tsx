@@ -17,6 +17,9 @@ import { calculateNightStats } from "../lib/nightStats";
 import { nightsStorage } from "../lib/nightsStorage";
 import { eventsRepository } from "../services/eventsRepository";
 import { listTrackedEventChanges, refreshTrackedEvents } from "../services/eventChangesService";
+import { listArtistAlerts, refreshArtistAlerts, unseenArtistAlerts } from "../services/artistAlertsService";
+import { countAlertArtists } from "../lib/artistMatching";
+import { followedArtistsStorage } from "../lib/followedArtistsStorage";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
 import type { Night } from "../types/Night";
@@ -37,6 +40,8 @@ export default function HomeScreen() {
   const [retryToken, setRetryToken] = useState(0);
   const [changedEventCount, setChangedEventCount] = useState(0);
   const [changesError, setChangesError] = useState(false);
+  const [alertArtistCount, setAlertArtistCount] = useState(0);
+  const [followedArtists, setFollowedArtists] = useState<Map<string, string>>(new Map());
 
   useFocusEffect(
     useCallback(() => {
@@ -50,6 +55,14 @@ export default function HomeScreen() {
         .then(() => listTrackedEventChanges())
         .then((items) => { if (isCurrent) setChangedEventCount(items.filter((item) => item.changes.length > 0).length); })
         .catch(() => { if (isCurrent) setChangesError(true); });
+      followedArtistsStorage.list()
+        .then((artists) => { if (isCurrent) setFollowedArtists(new Map(artists.map((artist) => [artist.normalizedName, artist.name]))); })
+        .catch(() => undefined);
+      refreshArtistAlerts()
+        .catch(() => undefined)
+        .then(() => listArtistAlerts())
+        .then((alerts) => { if (isCurrent) setAlertArtistCount(countAlertArtists(unseenArtistAlerts(alerts))); })
+        .catch(() => { if (isCurrent) setAlertArtistCount(0); });
       Promise.allSettled([nightsStorage.list(), eventStatusStorage.list(), loadDiscoverySettings()])
         .then(async ([nightResult, statusResult, preferencesResult]) => {
           if (!isCurrent) return;
@@ -89,8 +102,8 @@ export default function HomeScreen() {
   const allTimePulse = useMemo(() => calculateNightStats(nights, null, now), [nights, now]);
   const yearPulse = useMemo(() => calculateNightStats(nights, currentYear, now), [currentYear, nights, now]);
   const recommendations = useMemo(
-    () => getHomeRecommendations(nights, events, statuses, now, 3, discoveryCity, favouriteCategories),
-    [discoveryCity, events, favouriteCategories, nights, now, statuses],
+    () => getHomeRecommendations(nights, events, statuses, now, 3, discoveryCity, favouriteCategories, followedArtists),
+    [discoveryCity, events, favouriteCategories, followedArtists, nights, now, statuses],
   );
   const hasJournalBasedRecommendations = recommendations.some((item) => item.reason !== "Upcoming event in Discovery");
   const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -131,6 +144,13 @@ export default function HomeScreen() {
             </Pressable>
           ) : null}
           {changesError ? <Text style={styles.inlineMessage}>Some saved events could not be refreshed.</Text> : null}
+          {alertArtistCount > 0 ? (
+            <Pressable onPress={() => router.push("/artist-alerts")} style={styles.artistAlertCard} accessibilityRole="button">
+              <Text style={styles.artistAlertText}>
+                {alertArtistCount === 1 ? "1 artist you follow is playing near you" : `${alertArtistCount} artists you follow are playing near you`}
+              </Text>
+            </Pressable>
+          ) : null}
 
           <View style={styles.welcomeCard}>
             <Text style={styles.kicker}>Your scene, your history</Text>
@@ -274,6 +294,8 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   changeBanner: { backgroundColor: colors.surface, borderColor: colors.warning, borderWidth: 1, borderRadius: 10, padding: spacing.md, marginBottom: spacing.md },
+  artistAlertCard: { backgroundColor: colors.surface, borderColor: colors.secondary, borderWidth: 1, borderRadius: 10, padding: spacing.md, marginBottom: spacing.md },
+  artistAlertText: { color: colors.secondary, fontSize: 15, fontWeight: "700" },
   changeBannerText: { color: colors.warning, fontSize: 15, fontWeight: "700" },
   safeArea: {
     flex: 1,

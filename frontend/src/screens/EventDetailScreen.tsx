@@ -12,6 +12,7 @@ import {
 
 import EventDetailHeader from "../components/EventDetailHeader";
 import { ArtistLinks } from "../components/ArtistLinks";
+import { useFollowedArtists } from "../components/FollowButton";
 import { EmptyState } from "../components/EmptyState";
 import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
@@ -37,6 +38,7 @@ const statusOptions: Array<{
 
 export default function EventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const followed = useFollowedArtists();
   const [event, setEvent] = useState<EventEntry | null>(null);
   const [status, setStatus] = useState<EventStatus | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
@@ -343,7 +345,7 @@ export default function EventDetailScreen() {
         <Text style={styles.sectionTitle}>About this event</Text>
         <Text style={styles.notes}>{event.description}</Text>
         <Text style={styles.sectionTitle}>Artist lineup</Text>
-        <ArtistLinks names={event.artists} />
+        <ArtistLinks names={event.artists} follow={{ followedKeys: followed.keys, onToggleFollow: (name) => { void followed.toggle(name); } }} />
         <View style={styles.detailRow}>
           <Ionicons name="location-outline" size={18} color={colors.secondary} />
           <Text style={styles.detailText}>{location}</Text>

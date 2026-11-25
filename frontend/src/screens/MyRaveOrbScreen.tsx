@@ -65,6 +65,7 @@ export default function MyRaveOrbScreen() {
       <Text style={styles.eyebrow}>MY RAVEORB</Text>
       <Text style={styles.title}>Your scene. Your history.</Text>
       <InfoRow label="Preferences" value="Manage saved settings" onPress={() => router.push("/preferences")} accessibilityLabel="Open Preferences" />
+      <InfoRow label="Following" value="Artists you follow" onPress={() => router.push("/following")} accessibilityLabel="Open Following" />
       {loading ? <ActivityIndicator color={colors.primary} style={styles.loader} /> : journalError ? (
         <EmptyState title="Profile unavailable" message="Your journal could not be loaded." icon="alert-circle-outline" action={<Action label="Retry" icon="refresh" onPress={retry} />} />
       ) : nights.length === 0 ? (
