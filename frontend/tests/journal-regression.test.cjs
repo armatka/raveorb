@@ -44,6 +44,7 @@ function loadTypeScript(relativePath) {
     if (name === "@react-native-async-storage/async-storage") return asyncStorage;
     if (name === "expo-file-system") return { Directory, File, Paths: { document: "file:///documents" } };
     if (name === "react-native") return { Platform: { OS: "ios" } };
+    if (name === "./eventChanges") return loadTypeScript("src/lib/eventChanges.ts");
     return require(name);
   };
   loaded._compile(output, filename);

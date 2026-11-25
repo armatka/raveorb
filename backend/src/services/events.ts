@@ -39,7 +39,7 @@ function validateDateTime(value: string | undefined, key: string): string | unde
 
 const allowedQueryKeys = new Set([
   "keyword", "search", "city", "countryCode", "postalCode", "latlong", "radius", "unit",
-  "startDateTime", "endDateTime", "page", "size", "sort", "startDate", "endDate", "electronicOnly",
+  "startDateTime", "endDateTime", "page", "size", "sort", "startDate", "endDate", "electronicOnly", "includeCancelled",
   ...providers.flatMap((provider) => provider.queryKeys ?? []),
 ]);
 const validSorts = new Set(["date,asc", "date,desc", "name,asc", "name,desc", "relevance,desc", "distance,asc", "onSaleDate,asc"]);
@@ -80,6 +80,10 @@ export function parseEventSearchQuery(query: Record<string, unknown>): EventSear
   if (electronicOnlyText !== undefined && electronicOnlyText !== "true" && electronicOnlyText !== "false") {
     throw new EventQueryError("electronicOnly must be true or false.");
   }
+  const includeCancelledText = singleQueryValue(query, "includeCancelled");
+  if (includeCancelledText !== undefined && includeCancelledText !== "true" && includeCancelledText !== "false") {
+    throw new EventQueryError("includeCancelled must be true or false.");
+  }
   return {
     ...(keyword ? { keyword } : {}), ...(city ? { city } : {}), ...(rawCountryCode ? { countryCode: rawCountryCode.toUpperCase() } : {}),
     ...(postalCode ? { postalCode } : {}), ...(latlong ? { latlong: latlong.replace(/\s/g, "") } : {}),
@@ -91,6 +95,7 @@ export function parseEventSearchQuery(query: Record<string, unknown>): EventSear
     size: integerQueryValue(singleQueryValue(query, "size"), "size", 20, 1, 50),
     sort: rawSort,
     ...(electronicOnlyText !== undefined ? { electronicOnly: electronicOnlyText === "true" } : {}),
+    ...(includeCancelledText !== undefined ? { includeCancelled: includeCancelledText === "true" } : {}),
     ...(startDate ? { localStartDate: startDate } : {}), ...(endDate ? { localEndDate: endDate } : {}),
   };
 }
@@ -217,7 +222,8 @@ export async function searchEvents(query: EventSearchQuery, available: readonly 
   }
   const mergedEvents = deduplicateEvents(pages.flatMap((page) => page.events));
   const events = mergedEvents.map(classifyEvent)
-    .filter((event) => !query.electronicOnly || event.isElectronic);
+    .filter((event) => (!query.electronicOnly || event.isElectronic)
+      && (query.includeCancelled || event.status !== "cancelled"));
   if (pages.filter((page) => page.events.length > 0).length > 1) {
     const direction = query.sort === "date,desc" ? -1 : 1;
     events.sort((first, second) => direction * (`${first.date}T${first.startTime}`.localeCompare(`${second.date}T${second.startTime}`)));
@@ -241,7 +247,36 @@ export async function getEventById(id: string, available: readonly EventProvider
   if (!event) return null;
   const duplicates = await findDetailDuplicates(event, available);
   const merged = deduplicateEvents([event, ...duplicates])[0];
-  return classifyEvent(merged);
+  if (merged.id === event.id) return classifyEvent(merged);
+  return classifyEvent({
+    ...merged,
+    id: event.id,
+    source: event.source,
+    sourceEventId: event.sourceEventId,
+    status: event.status,
+    date: event.date,
+    dateTime: event.dateTime,
+    startTime: event.startTime,
+    endTime: event.endTime,
+    timezone: event.timezone,
+    venueId: event.venueId,
+    venueName: event.venueName,
+    address: event.address,
+    city: event.city,
+    province: event.province,
+    countryCode: event.countryCode,
+    country: event.country,
+    latitude: event.latitude,
+    longitude: event.longitude,
+    ticketUrl: event.ticketUrl,
+    eventUrl: event.eventUrl,
+    lastChangedAt: event.lastChangedAt,
+    changeNote: event.changeNote,
+    alsoListedOn: [
+      { source: merged.source, id: merged.id, ...(merged.eventUrl ? { eventUrl: merged.eventUrl } : {}) },
+      ...(merged.alsoListedOn ?? []).filter((item) => item.source !== event.source || item.id !== event.id),
+    ],
+  });
 }
 
 export function createEventService(availableProviders: readonly EventProvider[] = providers) {

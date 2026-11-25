@@ -300,9 +300,10 @@ export default function EventsScreen() {
     }
   };
 
-  const updateEventStatus = async (eventId: string, nextStatus: EventStatus | null) => {
+  const updateEventStatus = async (event: EventEntry, nextStatus: EventStatus | null) => {
+    const eventId = event.id;
     try {
-      await eventStatusStorage.set(eventId, nextStatus);
+      await eventStatusStorage.set(eventId, nextStatus, event);
       setStatuses((current) => {
         if (nextStatus === null) {
           const { [eventId]: _removed, ...remaining } = current;
@@ -420,7 +421,7 @@ export default function EventsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshEvents} tintColor={colors.primary} colors={[colors.primary]} />}
         keyExtractor={(event) => event.id}
         renderItem={({ item }) => (
-          <EventListItem event={item} status={statusLoadError ? undefined : statuses[item.id]} onStatusChange={statusLoadError ? undefined : (nextStatus) => updateEventStatus(item.id, nextStatus)} />
+          <EventListItem event={item} status={statusLoadError ? undefined : statuses[item.id]} onStatusChange={statusLoadError ? undefined : (nextStatus) => updateEventStatus(item, nextStatus)} />
         )}
         renderSectionHeader={({ section }) => <SectionHeading section={section} />}
         ItemSeparatorComponent={ItemSeparator}

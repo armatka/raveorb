@@ -16,6 +16,7 @@ import { getHomeRecommendations } from "../lib/homeRecommendations";
 import { calculateNightStats } from "../lib/nightStats";
 import { nightsStorage } from "../lib/nightsStorage";
 import { eventsRepository } from "../services/eventsRepository";
+import { listTrackedEventChanges, refreshTrackedEvents } from "../services/eventChangesService";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
 import type { Night } from "../types/Night";
@@ -34,6 +35,8 @@ export default function HomeScreen() {
   const [locationError, setLocationError] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const [retryToken, setRetryToken] = useState(0);
+  const [changedEventCount, setChangedEventCount] = useState(0);
+  const [changesError, setChangesError] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -41,6 +44,12 @@ export default function HomeScreen() {
       setLoading(true);
       setLoadError(false);
       setNow(new Date());
+      refreshTrackedEvents()
+        .then(() => { if (isCurrent) setChangesError(false); })
+        .catch(() => { if (isCurrent) setChangesError(true); })
+        .then(() => listTrackedEventChanges())
+        .then((items) => { if (isCurrent) setChangedEventCount(items.filter((item) => item.changes.length > 0).length); })
+        .catch(() => { if (isCurrent) setChangesError(true); });
       Promise.allSettled([nightsStorage.list(), eventStatusStorage.list(), loadDiscoverySettings()])
         .then(async ([nightResult, statusResult, preferencesResult]) => {
           if (!isCurrent) return;
@@ -60,6 +69,7 @@ export default function HomeScreen() {
           setLocationError(preferencesResult.status === "rejected");
           try {
             const result = await eventsRepository.listEvents(discoveryEventsQuery(discoveryLocation, preferences?.radiusKm));
+            await eventStatusStorage.backfillSnapshots(result);
             if (!isCurrent) return;
             setEvents(result);
             setEventLoadError(null);
@@ -115,6 +125,13 @@ export default function HomeScreen() {
             <Text style={styles.brandTag}>Discover the scene. Capture the experience.</Text>
           </View>
 
+          {changedEventCount > 0 ? (
+            <Pressable onPress={() => router.push("/event-changes")} style={styles.changeBanner} accessibilityRole="button">
+              <Text style={styles.changeBannerText}>{changedEventCount} of your events changed</Text>
+            </Pressable>
+          ) : null}
+          {changesError ? <Text style={styles.inlineMessage}>Some saved events could not be refreshed.</Text> : null}
+
           <View style={styles.welcomeCard}>
             <Text style={styles.kicker}>Your scene, your history</Text>
             <Text style={styles.headline}>Find the night. Keep the memory.</Text>
@@ -150,6 +167,9 @@ export default function HomeScreen() {
 
           <View style={styles.discoveryCard}>
             <Text style={styles.discoveryTitle}>Next up</Text>
+            <Pressable onPress={() => router.push("/event-changes")} accessibilityRole="button">
+              <Text style={styles.sectionMeta}>Your events</Text>
+            </Pressable>
             {loading ? (
               <ActivityIndicator color={colors.primary} style={styles.inlineLoader} />
             ) : eventLoadError || locationError ? (
@@ -253,6 +273,8 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  changeBanner: { backgroundColor: colors.surface, borderColor: colors.warning, borderWidth: 1, borderRadius: 10, padding: spacing.md, marginBottom: spacing.md },
+  changeBannerText: { color: colors.warning, fontSize: 15, fontWeight: "700" },
   safeArea: {
     flex: 1,
     backgroundColor: colors.background,

@@ -44,6 +44,17 @@ test("maps Ticketmaster events to the shared event contract", () => {
   assert.equal(mapTicketmasterEvent({ id: "missing-date", name: "No date" }), null);
 });
 
+test("maps Ticketmaster event statuses without treating offsale as sold out", () => {
+  for (const [code, status] of [
+    ["onsale", "scheduled"], ["offsale", "scheduled"], ["cancelled", "cancelled"],
+    ["postponed", "postponed"], ["rescheduled", "rescheduled"],
+  ] as const) {
+    assert.equal(mapTicketmasterEvent({
+      id: code, name: "Example", dates: { start: { localDate: "2030-06-14" }, status: { code } },
+    })?.status, status);
+  }
+});
+
 test("validates Discovery query values and date ranges", () => {
   const filters = parseTicketmasterQuery({ city: "Toronto", countryCode: "ca", page: "2", size: "20", startDate: "2030-06-01", endDate: "2030-06-30" });
   assert.equal(filters.countryCode, "CA");

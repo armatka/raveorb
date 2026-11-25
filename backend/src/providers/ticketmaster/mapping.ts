@@ -89,9 +89,10 @@ function typeFromClassification(classifications: TicketmasterClassification[], n
 function statusFromTicketmaster(code: string | undefined): EventEntry["status"] {
   switch (code?.toLowerCase()) {
     case "cancelled": return "cancelled";
-    case "postponed":
-    case "rescheduled": return "postponed";
-    case "onsale": return "scheduled";
+    case "postponed": return "postponed";
+    case "rescheduled": return "rescheduled";
+    case "onsale":
+    case "offsale": return "scheduled";
     default: return undefined;
   }
 }

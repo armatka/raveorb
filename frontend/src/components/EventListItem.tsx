@@ -64,6 +64,11 @@ export function EventListItem({ event, status, onStatusChange }: EventListItemPr
         </View>
         <Text style={styles.meta} numberOfLines={1}>{event.venueName}</Text>
         <Text style={styles.meta} numberOfLines={1}>{event.city}, {event.countryCode} · {formatEventSchedule(event)}</Text>
+        {event.status === "cancelled" || event.status === "postponed" || event.status === "rescheduled" ? (
+          <Text style={[styles.eventStatus, event.status === "cancelled" && styles.cancelledStatus]}>
+            {event.status === "cancelled" ? "Cancelled" : event.status === "postponed" ? "Postponed" : "Rescheduled"}
+          </Text>
+        ) : null}
         <Text style={styles.genres} numberOfLines={1}>{event.genres.slice(0, 3).join(" · ")}</Text>
       </View>
       </Pressable>
@@ -148,6 +153,8 @@ const styles = StyleSheet.create({
   categoryBadge: { maxWidth: 112, minHeight: 24, justifyContent: "center", paddingHorizontal: spacing.xs, borderRadius: 5, backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.border },
   categoryBadgeText: { maxWidth: 100, color: colors.secondary, fontSize: 9, fontWeight: "800", textTransform: "uppercase" },
   festivalBadge: { color: colors.primary, fontSize: 8, fontWeight: "800" },
+  eventStatus: { color: colors.warning, fontSize: 12, fontWeight: "700", marginTop: spacing.xs },
+  cancelledStatus: { color: colors.error },
   meta: {
     color: colors.muted,
     fontSize: 13,

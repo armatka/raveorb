@@ -93,7 +93,10 @@ test("deduplicates cross-provider events while preserving lookup by the merged-a
     id: submission.id,
   }]);
   assert.equal(result.events[0].description, "Community event details");
-  assert.deepEqual(await service.getEventById("submitted-community"), result.events[0]);
+  const detail = await service.getEventById("submitted-community");
+  assert.equal(detail?.id, "submitted-community");
+  assert.equal(detail?.description, result.events[0].description);
+  assert.deepEqual(detail?.alsoListedOn, [{ source: "ticketmaster", id: ticketmaster.id }]);
 });
 
 test("Ticketmaster detail includes approved adjacent-night submissions and fresh moderation changes", async () => {
@@ -184,13 +187,13 @@ test("submitted detail uses list merge rules and a 1 km Ticketmaster search cach
   context.mock.method(Date, "now", () => now);
   const service = createEventService([tm, submitted]);
   const detail = await service.getEventById(submission.id);
-  assert.equal(detail?.id, tmEvent.id);
+  assert.equal(detail?.id, submission.id);
   assert.equal(detail?.description, submission.description);
   assert.equal(detail?.imageUrl, tmEvent.imageUrl);
   assert.deepEqual(detail?.alsoListedOn, [{
-    source: "submitted",
-    id: submission.id,
-    eventUrl: submission.eventUrl,
+    source: "ticketmaster",
+    id: tmEvent.id,
+    eventUrl: tmEvent.eventUrl,
   }]);
   assert.equal(seen[0].latlong, "45.5017,-73.5673");
   assert.equal(seen[0].city, undefined);
@@ -230,6 +233,17 @@ test("submitted detail searches by city and country when coordinates are missing
   assert.equal(detail?.imageUrl, tmEvent.imageUrl);
 });
 
+test("merged-away submitted detail retains its own cancelled status, ID and note", async () => {
+  const { tmEvent, submission } = detailPair();
+  submission.status = "cancelled";
+  submission.changeNote = "Cancelled by organizer";
+  const detail = await getEventById(submission.id, [provider("ticketmaster", [tmEvent]), provider("submitted", [submission])]);
+  assert.equal(detail?.id, submission.id);
+  assert.equal(detail?.status, "cancelled");
+  assert.equal(detail?.changeNote, "Cancelled by organizer");
+  assert.equal(detail?.alsoListedOn?.[0].id, tmEvent.id);
+});
+
 test("Ticketmaster enrichment failure or missing configuration still returns submitted detail", async () => {
   const { tmEvent, submission } = detailPair();
   const tm = provider("ticketmaster", [tmEvent]);
@@ -255,6 +269,16 @@ test("all failed providers propagate the original error", async () => {
   const error = new ProviderError("Ticketmaster rate limit reached. Try again shortly.", 429, "upstream", 429);
   failed.search = async () => { throw error; };
   await assert.rejects(searchEvents(query(), [failed]), (received) => received === error);
+});
+
+test("search hides cancelled events by default but allows explicit inclusion", async () => {
+  const cancelled = { ...event("cancelled", "Techno Night", "2030-06-07"), status: "cancelled" as const };
+  const postponed = { ...event("postponed", "Techno Night", "2030-06-07"), status: "postponed" as const };
+  const tm = provider("ticketmaster", [cancelled, postponed]);
+  assert.deepEqual((await searchEvents(query(), [tm])).events.map((item) => item.id), ["postponed"]);
+  const included = parseEventSearchQuery({ countryCode: "US", includeCancelled: "true" });
+  assert.deepEqual((await searchEvents(included, [tm])).events.map((item) => item.id), ["cancelled", "postponed"]);
+  assert.throws(() => parseEventSearchQuery({ countryCode: "US", includeCancelled: "yes" }), EventQueryError);
 });
 
 test("routes known prefixes and falls back to Ticketmaster for raw or unknown IDs", async () => {

@@ -16,6 +16,7 @@ export type EventSearchQuery = {
   size: number;
   sort: string;
   electronicOnly?: boolean;
+  includeCancelled?: boolean;
   providerOptions: Record<string, Record<string, string>>;
 };
 

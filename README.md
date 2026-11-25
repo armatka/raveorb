@@ -76,6 +76,7 @@ Admin requests use `Authorization: Bearer <ADMIN_TOKEN>`. The endpoints are:
 - `GET /api/admin/submissions?status=pending|approved|rejected` (defaults to pending). Pending entries include `possibleDuplicates` when a likely Ticketmaster match is found.
 - `POST /api/admin/submissions/:id/approve`
 - `POST /api/admin/submissions/:id/reject` with an optional `{ "reason": "..." }` body
+- `PATCH /api/admin/submissions/:id/event` for approved events: set `eventStatus` to `scheduled`, `cancelled`, `postponed`, or `rescheduled`, and/or update `date`, `startTime`, `endTime`, and venue fields with an optional `changeNote` (up to 200 characters). A changed venue requires `address`, `city`, `latitude`, and `longitude`. Date/time edits automatically mark the event rescheduled unless a status is supplied.
 - `DELETE /api/admin/submissions/:id`
 
 Configure a strong `ADMIN_TOKEN` on the backend. The submission database defaults to `backend/data/raveorb.db`; set `DATABASE_PATH` to use another database file. Pending submissions are private until an administrator approves them. Approved submissions become searchable community events; rejected submissions remain available in the admin list with their reason unless deleted.
@@ -84,7 +85,11 @@ Events from different providers are deduplicated within the returned provider pa
 
 Known limitation: community submissions are only returned on provider page 0. A Ticketmaster duplicate on a later page will not be merged; the possible-duplicate warning in the pending admin list is the main safeguard.
 
-Event detail lookups also check the other provider for matches on the local date or adjacent dates and apply the same primary-selection and field-merge rules, including `alsoListedOn`. The response can therefore use the primary listing's ID even when requested through another listing's ID. Ticketmaster duplicate searches use a 1 km radius when coordinates are available (otherwise city and country) and are cached for five minutes; local approved submissions are checked on each request so moderation changes are reflected immediately. If Ticketmaster is unconfigured or this optional duplicate search fails, community event details remain available without duplicate enrichment.
+Event detail lookups check the other provider for matches on the local date or adjacent dates and merge missing fields while retaining the requested listing's ID, status and schedule, including `alsoListedOn`. Ticketmaster duplicate searches use a 1 km radius when coordinates are available (otherwise city and country) and are cached for five minutes; local approved submissions are checked on each request so moderation changes are reflected immediately. If Ticketmaster is unconfigured or this optional duplicate search fails, community event details remain available without duplicate enrichment.
+
+Discovery hides cancelled events by default; `GET /api/events?...&includeCancelled=true` includes them. Approved community events remain available by ID after cancellation, postponement, or their date passing. Ticketmaster `offsale` is not treated as sold out. Pagination totals remain provider totals and can include filtered events.
+
+On-device Going/Interested entries include an acknowledged event snapshot. Home and Your events refresh up to 25 upcoming snapshots at most once per six hours, rotating through larger lists, and show dismissible in-app changes. Past events are not refreshed or shown as changes. Existing statuses without snapshots are preserved and receive a baseline when their event appears in Discovery or is marked again; earlier changes cannot be reconstructed. There are no push notifications. Refresh failures are shown and retried on a later refresh window.
 
 To add a provider:
 1. Implement `EventProvider`, mapping its results to `EventEntry` and reading credentials at request time.
