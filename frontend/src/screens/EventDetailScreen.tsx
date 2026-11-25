@@ -179,7 +179,7 @@ export default function EventDetailScreen() {
   const selectStatus = async (nextStatus: EventStatus) => {
     const updatedStatus = status === nextStatus ? null : nextStatus;
     try {
-      await eventStatusStorage.set(event.id, updatedStatus);
+      await eventStatusStorage.set(id, updatedStatus, event);
       setStatus(updatedStatus);
     } catch {
       showAlert("Could not update event", "Your selection was not saved. Please try again.");
@@ -189,6 +189,12 @@ export default function EventDetailScreen() {
   return (
     <Screen edges={["left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
       <ScreenHeader onBack={() => goBackOrReplace("/(tabs)/events")} />
+      {event.status === "cancelled" || event.status === "postponed" || event.status === "rescheduled" ? (
+        <View style={[styles.changeBanner, event.status === "cancelled" ? styles.cancelledBanner : styles.postponedBanner]} accessibilityRole="alert">
+          <Text style={styles.changeBannerTitle}>{event.status === "cancelled" ? "Cancelled" : event.status === "postponed" ? "Postponed" : "Rescheduled"}</Text>
+          {event.changeNote ? <Text style={styles.changeBannerNote}>{event.changeNote}</Text> : null}
+        </View>
+      ) : null}
       <EventDetailHeader title={event.title} date={formattedDate} location={location} type={event.type} />
 
       <View style={styles.statusPanel}>
@@ -364,6 +370,11 @@ export default function EventDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+  changeBanner: { padding: spacing.md, borderRadius: 10, borderWidth: 1, marginBottom: spacing.md },
+  cancelledBanner: { borderColor: colors.error, backgroundColor: "rgba(232, 120, 120, 0.15)" },
+  postponedBanner: { borderColor: colors.warning, backgroundColor: "rgba(240, 195, 106, 0.15)" },
+  changeBannerTitle: { color: colors.text, fontSize: 18, fontWeight: "800" },
+  changeBannerNote: { color: colors.textSecondary, marginTop: spacing.xs },
   content: {
     width: "100%",
     maxWidth: 900,

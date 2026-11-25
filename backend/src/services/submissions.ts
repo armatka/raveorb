@@ -2,7 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 
 import { raveOrbCategories, type RaveOrbCategory } from "../types/index.js";
-import type { SubmissionInput } from "../db/submissions.js";
+import type { Submission, SubmissionChange, SubmissionInput } from "../db/submissions.js";
 
 const limits = {
   title: 150,
@@ -142,6 +142,42 @@ export function validateSubmissionInput(value: unknown): SubmissionInput {
     ...(currency ? { currency } : {}),
     ...(ageRestriction ? { ageRestriction } : {}),
     ...(submitterEmail ? { submitterEmail } : {}),
+  };
+}
+
+export function validateSubmissionChange(value: unknown, current: Submission): SubmissionChange {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new SubmissionValidationError("Change body must be an object.");
+  }
+  const input = value as Record<string, unknown>;
+  const allowed = new Set(["eventStatus", "date", "startTime", "endTime", "venueName", "address", "city", "latitude", "longitude", "changeNote"]);
+  if (Object.keys(input).some((key) => !allowed.has(key))) throw new SubmissionValidationError("Unsupported change field.");
+  const eventStatus = input.eventStatus ?? current.eventStatus ?? "scheduled";
+  if (eventStatus !== "scheduled" && eventStatus !== "cancelled" && eventStatus !== "postponed" && eventStatus !== "rescheduled") {
+    throw new SubmissionValidationError("eventStatus must be scheduled, cancelled, postponed, or rescheduled.");
+  }
+  const date = input.date === undefined ? current.date : text(input.date, "date", 10)!;
+  if (!validDate(date)) throw new SubmissionValidationError("date must be a valid YYYY-MM-DD date.");
+  const startTime = input.startTime === undefined ? current.startTime : text(input.startTime, "startTime", 5)!;
+  const endTime = input.endTime === undefined ? current.endTime : text(input.endTime, "endTime", 5)!;
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime)) {
+    throw new SubmissionValidationError("Times must use HH:MM.");
+  }
+  const venueName = input.venueName === undefined ? current.venueName : text(input.venueName, "venueName", limits.venueName)!;
+  const address = input.address === undefined ? current.address : text(input.address, "address", limits.address)!;
+  const city = input.city === undefined ? current.city : text(input.city, "city", limits.city)!;
+  const latitude = input.latitude === undefined ? current.latitude : numberValue(input.latitude, "latitude", -90, 90);
+  const longitude = input.longitude === undefined ? current.longitude : numberValue(input.longitude, "longitude", -180, 180);
+  if (venueName !== current.venueName && (input.address === undefined || input.city === undefined
+    || input.latitude === undefined || input.longitude === undefined)) {
+    throw new SubmissionValidationError("A changed venue requires its address, city, latitude, and longitude.");
+  }
+  const changeNote = text(input.changeNote, "changeNote", 200, false);
+  return {
+    eventStatus: input.eventStatus === undefined && (date !== current.date || startTime !== current.startTime)
+      ? "rescheduled" : eventStatus,
+    date, startTime, endTime, venueName, address, city, latitude, longitude,
+    ...(changeNote ? { changeNote } : {}),
   };
 }
 

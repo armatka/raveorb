@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { mkdtempSync, rmSync, rmdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 
 import { createSubmissionStore } from "../src/db/submissions.js";
@@ -22,6 +26,42 @@ const dateInNineteenMonths = () => {
   date.setUTCMonth(date.getUTCMonth() + 19);
   return date.toISOString().slice(0, 10);
 };
+
+test("migrates version-one submissions without losing their data", () => {
+  const directory = mkdtempSync(join(tmpdir(), "raveorb-submissions-test-"));
+  const path = join(directory, "test.db");
+  try {
+    const db = new DatabaseSync(path);
+    db.exec(`
+      CREATE TABLE schema_meta (version INTEGER NOT NULL);
+      INSERT INTO schema_meta VALUES (1);
+      CREATE TABLE submissions (
+        id TEXT PRIMARY KEY, status TEXT NOT NULL, created_at TEXT NOT NULL, reviewed_at TEXT,
+        reject_reason TEXT, submitter_email TEXT, title TEXT NOT NULL, date TEXT NOT NULL,
+        start_time TEXT NOT NULL, end_time TEXT NOT NULL, timezone TEXT NOT NULL, venue_name TEXT NOT NULL,
+        address TEXT NOT NULL, city TEXT NOT NULL, region TEXT NOT NULL, country_code TEXT NOT NULL,
+        latitude REAL NOT NULL, longitude REAL NOT NULL, artists TEXT NOT NULL, style TEXT NOT NULL,
+        description TEXT NOT NULL, ticket_url TEXT, price_min REAL, price_max REAL, currency TEXT, age_restriction TEXT
+      );
+      INSERT INTO submissions (id, status, created_at, title, date, start_time, end_time, timezone,
+        venue_name, address, city, region, country_code, latitude, longitude, artists, style, description)
+      VALUES ('old', 'approved', '2029-01-01', 'Techno', '2030-01-01', '21:00', '03:00', 'Europe/Paris',
+        'Hall', 'Address', 'Paris', '', 'FR', 48.8, 2.3, '[]', 'Techno', 'Details');
+    `);
+    db.close();
+    const store = createSubmissionStore(path);
+    const event = store.get("old");
+    assert.equal(event?.title, "Techno");
+    assert.equal(event?.status, "approved");
+    assert.equal(event?.eventStatus, "scheduled");
+    assert.equal(event?.changeNote, undefined);
+  } finally {
+    rmSync(`${path}-wal`, { force: true });
+    rmSync(`${path}-shm`, { force: true });
+    rmSync(path, { force: true });
+    rmdirSync(directory);
+  }
+});
 
 function submission(overrides: Record<string, unknown> = {}) {
   return {
@@ -238,8 +278,39 @@ test("public submission responses never include submitter email", async () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(submission()),
     });
+
     assert.equal(response.status, 201);
     assert.equal(JSON.stringify(await response.json()).includes("organizer@example.test"), false);
     assert.equal(store.list("pending")[0].submitterEmail, "organizer@example.test");
   });
+});
+
+test("admin changes approved event details, cancellation and postponement without hiding detail", async () => {
+    await withServer(async (base, store) => {
+      const item = store.create(submission() as Parameters<typeof store.create>[0]);
+      const headers = { Authorization: "Bearer admin-secret", "content-type": "application/json" };
+      const patch = (body: object) => fetch(`${base}/api/admin/submissions/${item.id}/event`, {
+        method: "PATCH", headers, body: JSON.stringify(body),
+      });
+      assert.equal((await patch({ eventStatus: "cancelled" })).status, 409);
+      store.approve(item.id);
+      assert.equal((await patch({ eventStatus: "cancelled", changeNote: "Cancelled by organizer" })).status, 200);
+      const detail = await fetch(`${base}/api/events/submitted-${item.id}`).then((response) => response.json()) as Record<string, unknown>;
+      assert.equal(detail.status, "cancelled");
+      assert.equal(detail.changeNote, "Cancelled by organizer");
+      assert.equal(typeof detail.lastChangedAt, "string");
+      const hidden = await fetch(`${base}/api/events?city=Paris&countryCode=FR`).then((response) => response.json()) as unknown[];
+      assert.equal(hidden.length, 0);
+      const included = await fetch(`${base}/api/events?city=Paris&countryCode=FR&includeCancelled=true`).then((response) => response.json()) as unknown[];
+      assert.equal(included.length, 1);
+      assert.equal((await patch({ eventStatus: "postponed" })).status, 200);
+      assert.equal((await patch({ venueName: "New venue" })).status, 400);
+      const edit = await patch({ date: nextDate(), startTime: "23:00", venueName: "New venue", address: "20 Rue Example", city: "Paris", latitude: 48.86, longitude: 2.35, changeNote: "Moved" });
+      assert.equal(edit.status, 200);
+      const changed = await edit.json() as Record<string, unknown>;
+      assert.equal(changed.eventStatus, "rescheduled");
+      assert.equal(changed.venueName, "New venue");
+      assert.equal(changed.changeNote, "Moved");
+      assert.equal((await fetch(`${base}/api/events/submitted-${item.id}`)).status, 200);
+    }, "admin-secret");
 });

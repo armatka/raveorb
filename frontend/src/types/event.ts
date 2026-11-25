@@ -1,5 +1,5 @@
 export type EventType = "festival" | "rave" | "concert" | "club";
-export type EventStatus = "scheduled" | "cancelled" | "postponed" | "sold-out";
+export type EventStatus = "scheduled" | "cancelled" | "postponed" | "rescheduled" | "sold-out";
 export type EventCurrency = string;
 export type DiscoveryLocation = {
   label: string;
@@ -68,6 +68,9 @@ export type EventSubmission = EventSubmissionInput & {
   createdAt: string;
   reviewedAt?: string;
   rejectReason?: string;
+  eventStatus?: EventStatus;
+  lastChangedAt?: string;
+  changeNote?: string;
   possibleDuplicates?: { id: string; title: string; venueName: string; score: number }[];
 };
 
@@ -124,5 +127,7 @@ export interface EventEntry {
   ticketSaleEndDateTime?: string;
   ageRestriction?: string;
   status?: EventStatus;
+  lastChangedAt?: string;
+  changeNote?: string;
   alsoListedOn?: { source: string; id: string; eventUrl?: string }[];
 }

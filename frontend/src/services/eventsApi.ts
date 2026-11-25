@@ -14,6 +14,7 @@ export type EventsApiQuery = {
   size?: number;
   sort?: string;
   electronicOnly?: boolean;
+  includeCancelled?: boolean;
 };
 
 export class EventsApiError extends Error {
@@ -24,7 +25,7 @@ export class EventsApiError extends Error {
 }
 
 export type EventsApiRequestOptions = {
-  method?: "GET" | "POST" | "DELETE";
+  method?: "GET" | "POST" | "PATCH" | "DELETE";
   headers?: Record<string, string>;
   body?: unknown;
 };
@@ -86,7 +87,7 @@ export async function requestEventsApi(
 
 export function serializeEventsQuery(query: EventsApiQuery): string {
   const params = new URLSearchParams();
-  for (const key of ["keyword", "city", "countryCode", "postalCode", "latlong", "radius", "unit", "classificationName", "genreId", "startDateTime", "endDateTime", "page", "size", "sort", "electronicOnly"] as const) {
+  for (const key of ["keyword", "city", "countryCode", "postalCode", "latlong", "radius", "unit", "classificationName", "genreId", "startDateTime", "endDateTime", "page", "size", "sort", "electronicOnly", "includeCancelled"] as const) {
     const value = query[key];
     if (value !== undefined && String(value).trim()) params.set(key, String(value).trim());
   }

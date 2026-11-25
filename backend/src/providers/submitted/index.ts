@@ -56,7 +56,9 @@ function toEvent(submission: Submission): EventEntry {
     ...(submission.currency ? { currency: submission.currency } : {}),
     ...(submission.ageRestriction ? { ageRestriction: submission.ageRestriction } : {}),
     source: "submitted",
-    status: "scheduled",
+    status: submission.eventStatus ?? "scheduled",
+    ...(submission.lastChangedAt ? { lastChangedAt: submission.lastChangedAt } : {}),
+    ...(submission.changeNote ? { changeNote: submission.changeNote } : {}),
   };
 }
 
@@ -101,7 +103,7 @@ export function createSubmittedProvider(store: SubmissionStore): EventProvider {
     },
     async getById(sourceEventId) {
       const submission = store.get(sourceEventId);
-      return submission?.status === "approved" && isUpcoming(submission)
+      return submission?.status === "approved"
         ? toEvent(submission)
         : null;
     },
@@ -114,5 +116,6 @@ export const submittedProvider = createSubmittedProvider({
   list: (status) => getDefaultSubmissionStore().list(status),
   approve: (id) => getDefaultSubmissionStore().approve(id),
   reject: (id, reason) => getDefaultSubmissionStore().reject(id, reason),
+  updateEvent: (id, change) => getDefaultSubmissionStore().updateEvent(id, change),
   remove: (id) => getDefaultSubmissionStore().remove(id),
 });

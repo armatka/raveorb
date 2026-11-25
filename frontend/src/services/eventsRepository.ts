@@ -24,6 +24,7 @@ export type EventQueryFilters = {
   size?: number;
   sort?: string;
   electronicOnly?: boolean;
+  includeCancelled?: boolean;
 };
 
 export type EventsDataMode = "api" | "mock";
@@ -50,7 +51,7 @@ function isEventCurrency(value: unknown): value is EventCurrency {
 }
 
 function isEventStatus(value: unknown): value is EventStatus {
-  return value === "scheduled" || value === "cancelled" || value === "postponed" || value === "sold-out";
+  return value === "scheduled" || value === "cancelled" || value === "postponed" || value === "rescheduled" || value === "sold-out";
 }
 
 function isRaveOrbCategory(value: unknown): value is RaveOrbCategory {
@@ -118,6 +119,8 @@ function isEventEntry(value: unknown): value is EventEntry {
     && typeof value.source === "string"
     && isOptionalString(value.sourceEventId)
     && isOptionalString(value.ageRestriction)
+    && isOptionalString(value.lastChangedAt)
+    && isOptionalString(value.changeNote)
     && (value.status === undefined || isEventStatus(value.status));
 }
 
@@ -181,6 +184,7 @@ function validateFilters(filters: EventQueryFilters): void {
 }
 
 function matchesFilters(event: EventEntry, filters: EventQueryFilters): boolean {
+  if (!filters.includeCancelled && event.status === "cancelled") return false;
   const city = filters.city?.trim().toLocaleLowerCase();
   const genre = filters.genre?.trim().toLocaleLowerCase();
   const search = filters.search?.trim().toLocaleLowerCase();
@@ -229,6 +233,7 @@ function apiQuery(filters: EventQueryFilters): EventsApiQuery {
     size: filters.size ?? 20,
     sort: filters.sort ?? "date,asc",
     electronicOnly: filters.electronicOnly,
+    includeCancelled: filters.includeCancelled,
   };
 }
 

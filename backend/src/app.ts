@@ -10,7 +10,7 @@ import { getEventById, parseEventSearchQuery, searchEvents, ProviderError, Event
 import { isLikelySameEvent } from "./services/deduplication.js";
 import { ticketmasterProvider as registeredTicketmasterProvider } from "./providers/ticketmaster/index.js";
 import type { EventProvider } from "./providers/types.js";
-import { createSubmissionRateLimiter, requireAdmin, SubmissionValidationError, validateSubmissionInput } from "./services/submissions.js";
+import { createSubmissionRateLimiter, requireAdmin, SubmissionValidationError, validateSubmissionChange, validateSubmissionInput } from "./services/submissions.js";
 
 type EventService = {
   searchEvents: typeof searchEvents;
@@ -182,6 +182,20 @@ export function createApp(
     const submission = getSubmissionStore().reject(req.params.id, typeof reason === "string" ? reason.trim() : undefined);
     if (!submission) return res.status(404).json({ error: "Submission not found." });
     return res.json(submission);
+  });
+
+  app.patch("/api/admin/submissions/:id/event", (req, res: Response) => {
+    const current = getSubmissionStore().get(req.params.id);
+    if (!current) return res.status(404).json({ error: "Submission not found." });
+    if (current.status !== "approved") return res.status(409).json({ error: "Only approved submissions can be changed." });
+    try {
+      const submission = getSubmissionStore().updateEvent(req.params.id, validateSubmissionChange(req.body, current));
+      if (!submission) return res.status(409).json({ error: "Submission is no longer approved." });
+      return res.json(submission);
+    } catch (error) {
+      if (error instanceof SubmissionValidationError) return res.status(400).json({ error: error.message });
+      throw error;
+    }
   });
 
   app.delete("/api/admin/submissions/:id", (req, res: Response) => {

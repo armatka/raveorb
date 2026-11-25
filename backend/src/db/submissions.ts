@@ -4,11 +4,23 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 
-import type { EventSubmission, EventSubmissionInput, RaveOrbCategory, SubmissionStatus } from "../types/index.js";
+import type { EventSubmission, EventSubmissionInput, EventStatus, RaveOrbCategory, SubmissionStatus } from "../types/index.js";
 
 export type { SubmissionStatus } from "../types/index.js";
 export type SubmissionInput = EventSubmissionInput;
 export type Submission = EventSubmission;
+export type SubmissionChange = {
+  eventStatus: EventStatus;
+  date: string;
+  startTime: string;
+  endTime: string;
+  venueName: string;
+  address: string;
+  city: string;
+  latitude: number;
+  longitude: number;
+  changeNote?: string;
+};
 
 export interface SubmissionStore {
   create(input: SubmissionInput): Submission;
@@ -16,6 +28,7 @@ export interface SubmissionStore {
   list(status?: SubmissionStatus): Submission[];
   approve(id: string): Submission | null;
   reject(id: string, reason?: string): Submission | null;
+  updateEvent(id: string, change: SubmissionChange): Submission | null;
   remove(id: string): boolean;
 }
 
@@ -25,6 +38,9 @@ type SubmissionRow = {
   created_at: string;
   reviewed_at: string | null;
   reject_reason: string | null;
+  event_status: EventStatus;
+  last_changed_at: string | null;
+  change_note: string | null;
   submitter_email: string | null;
   title: string;
   date: string;
@@ -49,7 +65,7 @@ type SubmissionRow = {
 };
 
 const defaultDatabasePath = resolve(dirname(fileURLToPath(import.meta.url)), "../../data/raveorb.db");
-const schemaVersion = 1;
+const schemaVersion = 2;
 
 export function createSubmissionStore(databasePath = process.env.DATABASE_PATH || defaultDatabasePath): SubmissionStore {
   if (databasePath !== ":memory:") mkdirSync(dirname(resolve(databasePath)), { recursive: true });
@@ -65,6 +81,9 @@ export function createSubmissionStore(databasePath = process.env.DATABASE_PATH |
       createdAt: row.created_at,
       ...(row.reviewed_at ? { reviewedAt: row.reviewed_at } : {}),
       ...(row.reject_reason ? { rejectReason: row.reject_reason } : {}),
+      eventStatus: row.event_status,
+      ...(row.last_changed_at ? { lastChangedAt: row.last_changed_at } : {}),
+      ...(row.change_note ? { changeNote: row.change_note } : {}),
       ...(row.submitter_email ? { submitterEmail: row.submitter_email } : {}),
       title: row.title,
       date: row.date,
@@ -125,6 +144,15 @@ export function createSubmissionStore(databasePath = process.env.DATABASE_PATH |
         .run(new Date().toISOString(), reason ?? null, id);
       return mapRow(byId.get(id) as SubmissionRow | undefined);
     },
+    updateEvent(id, change) {
+      const result = db.prepare(`UPDATE submissions SET event_status = ?, date = ?, start_time = ?, end_time = ?,
+        venue_name = ?, address = ?, city = ?, latitude = ?, longitude = ?, last_changed_at = ?, change_note = ?
+        WHERE id = ? AND status = 'approved'`).run(
+        change.eventStatus, change.date, change.startTime, change.endTime, change.venueName, change.address,
+        change.city, change.latitude, change.longitude, new Date().toISOString(), change.changeNote ?? null, id,
+      );
+      return result.changes ? mapRow(byId.get(id) as SubmissionRow | undefined) : null;
+    },
     remove(id) {
       return db.prepare("DELETE FROM submissions WHERE id = ?").run(id).changes > 0;
     },
@@ -141,6 +169,9 @@ function migrate(db: DatabaseSync): void {
       created_at TEXT NOT NULL,
       reviewed_at TEXT,
       reject_reason TEXT,
+      event_status TEXT NOT NULL DEFAULT 'scheduled',
+      last_changed_at TEXT,
+      change_note TEXT,
       submitter_email TEXT,
       title TEXT NOT NULL,
       date TEXT NOT NULL,
@@ -165,6 +196,18 @@ function migrate(db: DatabaseSync): void {
     )`);
     db.exec("CREATE INDEX submissions_status_date_idx ON submissions(status, date)");
     db.prepare("INSERT INTO schema_meta (version) VALUES (?)").run(schemaVersion);
+  } else if (version.version === 1) {
+    db.exec("BEGIN");
+    try {
+      db.exec("ALTER TABLE submissions ADD COLUMN event_status TEXT NOT NULL DEFAULT 'scheduled'");
+      db.exec("ALTER TABLE submissions ADD COLUMN last_changed_at TEXT");
+      db.exec("ALTER TABLE submissions ADD COLUMN change_note TEXT");
+      db.prepare("UPDATE schema_meta SET version = ?").run(schemaVersion);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
   } else if (version.version !== schemaVersion) {
     throw new Error(`Unsupported submissions schema version: ${version.version}`);
   }

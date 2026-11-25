@@ -67,3 +67,20 @@ export async function deleteSubmission(token: string, id: string): Promise<void>
     headers: adminHeaders(token),
   });
 }
+
+export async function changeSubmittedEvent(
+  token: string,
+  id: string,
+  change: Partial<Pick<EventSubmission, "eventStatus" | "date" | "startTime" | "endTime" | "venueName" | "address" | "city" | "latitude" | "longitude" | "changeNote">>,
+): Promise<EventSubmission> {
+  assertApiConfigured();
+  const { payload } = await requestEventsApi(`/api/admin/submissions/${encodeURIComponent(id)}/event`, {
+    method: "PATCH",
+    headers: adminHeaders(token),
+    body: change,
+  });
+  if (typeof payload !== "object" || payload === null || typeof (payload as Record<string, unknown>).id !== "string") {
+    throw new Error("The event service returned an invalid review response.");
+  }
+  return payload as EventSubmission;
+}

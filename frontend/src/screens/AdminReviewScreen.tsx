@@ -7,6 +7,7 @@ import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
 import {
   approveSubmission,
+  changeSubmittedEvent,
   deleteSubmission,
   listSubmissions,
   rejectSubmission,
@@ -122,6 +123,9 @@ export default function AdminReviewScreen() {
               <Text style={styles.description}>{submission.description}</Text>
               {submission.submitterEmail ? <Text style={styles.email}>Submitter: {submission.submitterEmail}</Text> : null}
               {submission.ticketUrl ? <Text style={styles.detail}>{submission.ticketUrl}</Text> : null}
+              {status === "approved" ? (
+                <ApprovedActions submission={submission} token={adminToken} onUpdated={() => load(adminToken, status)} />
+              ) : null}
               {status === "pending" ? (
                 <>
                   <TextInput
@@ -150,6 +154,69 @@ export default function AdminReviewScreen() {
         </>
       )}
     </Screen>
+  );
+}
+
+function ApprovedActions({ submission, token, onUpdated }: {
+  submission: EventSubmission;
+  token: string;
+  onUpdated: () => Promise<void>;
+}) {
+  const [note, setNote] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [date, setDate] = useState(submission.date);
+  const [startTime, setStartTime] = useState(submission.startTime);
+  const [endTime, setEndTime] = useState(submission.endTime);
+  const [venueName, setVenueName] = useState(submission.venueName);
+  const [address, setAddress] = useState(submission.address);
+  const [city, setCity] = useState(submission.city);
+  const [latitude, setLatitude] = useState(String(submission.latitude));
+  const [longitude, setLongitude] = useState(String(submission.longitude));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (action: "cancelled" | "postponed" | "edit") => {
+    setBusy(true);
+    setError("");
+    try {
+      if (action === "edit" && (!latitude.trim() || !longitude.trim() || !Number.isFinite(Number(latitude)) || !Number.isFinite(Number(longitude)))) {
+        throw new Error("Enter valid venue coordinates.");
+      }
+      await changeSubmittedEvent(token, submission.id, {
+        ...(action === "edit"
+          ? { date, startTime, endTime, venueName, address, city, latitude: Number(latitude), longitude: Number(longitude) }
+          : { eventStatus: action }),
+        ...(note.trim() ? { changeNote: note.trim() } : {}),
+      });
+      setEditing(false);
+      setNote("");
+      await onUpdated();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not update this event.");
+    } finally { setBusy(false); }
+  };
+  const fields: Array<[string, string, (value: string) => void]> = [
+    ["Date (YYYY-MM-DD)", date, setDate], ["Start time (HH:MM)", startTime, setStartTime],
+    ["End time (HH:MM)", endTime, setEndTime], ["Venue name", venueName, setVenueName],
+    ["Address", address, setAddress], ["City", city, setCity],
+    ["Latitude", latitude, setLatitude], ["Longitude", longitude, setLongitude],
+  ];
+  return (
+    <View>
+      <Text style={styles.detail}>Event status: {submission.eventStatus ?? "scheduled"}</Text>
+      {submission.changeNote ? <Text style={styles.detail}>{submission.changeNote}</Text> : null}
+      <TextInput value={note} onChangeText={setNote} placeholder="Optional change note" placeholderTextColor={colors.muted} style={styles.reasonInput} maxLength={200} accessibilityLabel={`Change note for ${submission.title}`} />
+      {editing ? fields.map(([label, value, setValue]) => (
+        <TextInput key={label} value={value} onChangeText={setValue} placeholder={label} placeholderTextColor={colors.muted} style={styles.reasonInput} accessibilityLabel={label} />
+      )) : null}
+      {error ? <Text style={styles.error} accessibilityLiveRegion="polite">{error}</Text> : null}
+      <View style={styles.actionRow}>
+        <Action label="Mark cancelled" icon="close" destructive disabled={busy} onPress={() => { void submit("cancelled"); }} />
+        <Action label="Mark postponed" icon="time-outline" disabled={busy} onPress={() => { void submit("postponed"); }} />
+        <Action label={editing ? "Save changes" : "Edit date/time/venue"} icon="create-outline" disabled={busy} onPress={() => { if (editing) void submit("edit"); else setEditing(true); }} />
+        {editing ? <Action label="Cancel edit" icon="close" disabled={busy} onPress={() => setEditing(false)} /> : null}
+      </View>
+    </View>
   );
 }
 
