@@ -15,6 +15,9 @@ import { eventStatusStorage, type EventStatus } from "../lib/eventStatusStorage"
 import { getHomeRecommendations } from "../lib/homeRecommendations";
 import { calculateNightStats } from "../lib/nightStats";
 import { nightsStorage } from "../lib/nightsStorage";
+import { homeOrbitReady } from "../lib/orbit";
+import { orbitDismissal } from "../lib/orbitDismissal";
+import { showAlert } from "../lib/showAlert";
 import { eventsRepository } from "../services/eventsRepository";
 import { listTrackedEventChanges, refreshTrackedEvents } from "../services/eventChangesService";
 import { listArtistAlerts, refreshArtistAlerts, unseenArtistAlerts } from "../services/artistAlertsService";
@@ -42,6 +45,8 @@ export default function HomeScreen() {
   const [changesError, setChangesError] = useState(false);
   const [alertArtistCount, setAlertArtistCount] = useState(0);
   const [followedArtists, setFollowedArtists] = useState<Map<string, string>>(new Map());
+  const [dismissedOrbitYear, setDismissedOrbitYear] = useState<string | null>(null);
+  const [dismissalLoaded, setDismissalLoaded] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -49,6 +54,10 @@ export default function HomeScreen() {
       setLoading(true);
       setLoadError(false);
       setNow(new Date());
+      setDismissalLoaded(false);
+      orbitDismissal.get()
+        .then((year) => { if (isCurrent) { setDismissedOrbitYear(year); setDismissalLoaded(true); } })
+        .catch(() => { if (isCurrent) showAlert("Orbit unavailable", "Could not read your Orbit dismissal."); });
       refreshTrackedEvents()
         .then(() => { if (isCurrent) setChangesError(false); })
         .catch(() => { if (isCurrent) setChangesError(true); })
@@ -99,6 +108,16 @@ export default function HomeScreen() {
   );
 
   const currentYear = String(now.getFullYear());
+  const orbitYear = homeOrbitReady(nights, now, dismissedOrbitYear);
+  const dismissOrbit = async () => {
+    if (!orbitYear) return;
+    try {
+      await orbitDismissal.dismiss(orbitYear);
+      setDismissedOrbitYear(orbitYear);
+    } catch {
+      showAlert("Could not dismiss Orbit", "Please try again.");
+    }
+  };
   const allTimePulse = useMemo(() => calculateNightStats(nights, null, now), [nights, now]);
   const yearPulse = useMemo(() => calculateNightStats(nights, currentYear, now), [currentYear, nights, now]);
   const recommendations = useMemo(
@@ -160,6 +179,19 @@ export default function HomeScreen() {
               venues, friends, and moments that made each night yours.
             </Text>
           </View>
+
+          {!loading && !loadError && dismissalLoaded && orbitYear ? (
+            <View style={styles.welcomeCard}>
+              <Pressable onPress={() => router.push({ pathname: "/orbit", params: { year: orbitYear } })} accessibilityRole="button">
+                <Text style={styles.kicker}>YOUR YEAR IN NIGHTS</Text>
+                <Text style={styles.headline}>Your {orbitYear} Orbit is ready</Text>
+                <Text style={styles.supportingText}>Relive your year →</Text>
+              </Pressable>
+              <Pressable onPress={dismissOrbit} accessibilityRole="button" accessibilityLabel="Dismiss Orbit until next year" style={{ paddingVertical: spacing.sm }}>
+                <Text style={styles.sectionMeta}>Not now</Text>
+              </Pressable>
+            </View>
+          ) : null}
 
           <View style={styles.quickActions}>
             <QuickAction icon="compass-outline" label="Discover events" onPress={() => router.push("/(tabs)/events")} />

@@ -9,6 +9,8 @@ RaveOrb is an Expo app for discovering electronic music events and keeping a per
 - The Express API normalizes Ticketmaster Discovery API v2 responses and keeps `TICKETMASTER_API_KEY` on the server. Venue and stats endpoints continue to use local development data.
 - Nights and personal event statuses are stored locally with AsyncStorage. On native devices, selected photos are copied to app-managed document storage. Old Nights without a currency are migrated to USD; unsupported or malformed stored records are not overwritten.
 - Stats are computed from local Nights and group spending by currency without conversion. Journal data is device-local and is not synced or backed up by the app.
+- Orbit unlocks after three Nights in a year. Its style uses up to 50 linked event lookups, and weekends are grouped by Friday using the Night's date. Spending excludes zero values because an unfilled cost is stored as zero. The share image excludes photos, notes and moments; friends and spending are opt-in. Image sharing is available on supported iOS and Android devices, including Expo Go.
+- In development builds, My RaveOrb can load eight sample 2026 Nights or remove Nights whose event name starts with `[Sample]`.
 
 ## Prerequisites
 

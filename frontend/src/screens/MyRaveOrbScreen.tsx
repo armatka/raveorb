@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { openArtist } from "../components/ArtistLinks";
@@ -14,6 +14,8 @@ import { formatCurrency } from "../lib/formatCurrency";
 import { goBackOrReplace } from "../lib/navigation";
 import { calculateNightStats, calculateProfileStats } from "../lib/nightStats";
 import { nightsStorage } from "../lib/nightsStorage";
+import { loadSampleNights, removeSampleNights } from "../lib/sampleNights";
+import { showAlert } from "../lib/showAlert";
 import { eventsRepository } from "../services/eventsRepository";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
@@ -29,6 +31,8 @@ export default function MyRaveOrbScreen() {
   const [eventsError, setEventsError] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
   const [selectedYear, setSelectedYear] = useState<string | null>(null);
+  const [sampleBusy, setSampleBusy] = useState(false);
+  const sampleBusyRef = useRef(false);
 
   useFocusEffect(useCallback(() => {
     let active = true;
@@ -58,6 +62,22 @@ export default function MyRaveOrbScreen() {
   const recap = useMemo(() => calculateNightStats(nights, recapYear), [nights, recapYear]);
   const retry = () => setRetryToken((token) => token + 1);
   const stats = profile.stats;
+  const runSampleAction = async (action: "load" | "remove") => {
+    if (sampleBusyRef.current) return;
+    sampleBusyRef.current = true;
+    setSampleBusy(true);
+    try {
+      if (action === "load") await loadSampleNights();
+      else await removeSampleNights();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Please try again.";
+      showAlert("Sample Nights could not be updated", `${message} Some sample Nights may have been ${action === "load" ? "added" : "removed"}.`);
+    } finally {
+      retry();
+      sampleBusyRef.current = false;
+      setSampleBusy(false);
+    }
+  };
 
   return (
     <Screen edges={["left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
@@ -66,6 +86,7 @@ export default function MyRaveOrbScreen() {
       <Text style={styles.title}>Your scene. Your history.</Text>
       <InfoRow label="Preferences" value="Manage saved settings" onPress={() => router.push("/preferences")} accessibilityLabel="Open Preferences" />
       <InfoRow label="Following" value="Artists you follow" onPress={() => router.push("/following")} accessibilityLabel="Open Following" />
+      <InfoRow label="Orbit" value="Your year in Nights" onPress={() => router.push("/orbit")} accessibilityLabel="Open Orbit" />
       {loading ? <ActivityIndicator color={colors.primary} style={styles.loader} /> : journalError ? (
         <EmptyState title="Profile unavailable" message="Your journal could not be loaded." icon="alert-circle-outline" action={<Action label="Retry" icon="refresh" onPress={retry} />} />
       ) : nights.length === 0 ? (
@@ -141,6 +162,13 @@ export default function MyRaveOrbScreen() {
           </> : <Text style={styles.muted}>No dated Nights to recap.</Text>}
         </>
       )}
+      {__DEV__ ? (
+        <View style={styles.sampleActions}>
+          <Section title="DEVELOPER TOOLS" />
+          <Action label="Load sample Nights" icon="add" onPress={() => runSampleAction("load")} disabled={sampleBusy || loading} />
+          <Action label="Remove sample Nights" icon="trash-outline" onPress={() => runSampleAction("remove")} disabled={sampleBusy || loading} />
+        </View>
+      ) : null}
     </Screen>
   );
 }
@@ -157,7 +185,7 @@ function Metric({ label, value }: { label: string; value: string }) { return <Vi
 function InfoRow({ label, value, onPress, accessibilityLabel }: { label: string; value: string; onPress?: () => void; accessibilityLabel?: string }) {
   return <Pressable style={styles.infoRow} onPress={onPress} disabled={!onPress} accessibilityRole={onPress ? "link" : undefined} accessibilityLabel={onPress ? accessibilityLabel ?? `View artist ${value}` : undefined}><Text style={styles.infoLabel}>{label}</Text><Text style={[styles.infoValue, onPress && styles.linkText]}>{value}</Text>{onPress ? <Ionicons name="chevron-forward" size={16} color={colors.secondary} /> : null}</Pressable>;
 }
-function Action({ label, icon, onPress }: { label: string; icon: keyof typeof Ionicons.glyphMap; onPress: () => void }) { return <Pressable onPress={onPress} style={styles.action} accessibilityRole="button" accessibilityLabel={label}><Ionicons name={icon} size={18} color={colors.background} /><Text style={styles.actionText}>{label}</Text></Pressable>; }
+function Action({ label, icon, onPress, disabled }: { label: string; icon: keyof typeof Ionicons.glyphMap; onPress: () => void; disabled?: boolean }) { return <Pressable onPress={onPress} disabled={disabled} style={[styles.action, disabled && styles.actionDisabled]} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }}><Ionicons name={icon} size={18} color={colors.background} /><Text style={styles.actionText}>{label}</Text></Pressable>; }
 
 const styles = StyleSheet.create({
   content: { width: "100%", maxWidth: 800, alignSelf: "center", paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl * 2 },
@@ -195,5 +223,7 @@ const styles = StyleSheet.create({
   recapTitle: { color: colors.text, fontSize: 17, fontWeight: "700", marginVertical: spacing.md },
   emptyActions: { gap: spacing.sm },
   action: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, backgroundColor: colors.primary, borderRadius: 8 },
+  actionDisabled: { opacity: 0.4 },
   actionText: { color: colors.background, fontWeight: "700", fontSize: 12 },
+  sampleActions: { gap: spacing.sm },
 });
