@@ -98,9 +98,48 @@ test("past-date entries do not appear in the tracked changes list", async () => 
   const service = load("src/services/eventChangesService.ts", {
     "../lib/eventChanges": changes,
     "../lib/eventStatusStorage": { eventStatusStorage },
+    "../lib/calendarEventDetails": { buildCalendarEventDetails: () => null },
+    "../lib/calendarLinkStorage": { calendarLinkStorage: {} },
+    "./calendarService": { calendarService: {} },
     "./eventsRepository": { eventsRepository: {} },
   });
   const list = await service.listTrackedEventChanges(new Date("2030-06-07T16:00:00Z"));
   assert.deepEqual(list.map((item) => item.id), ["today"]);
   assert.equal(list[0].changes[0].kind, "cancelled");
+});
+
+test("update calendar action reschedules or cancels the linked calendar event", async () => {
+  const calls = [];
+  const links = { "event-1": "cal-1" };
+  const details = { title: "Night", startDate: new Date(), endDate: new Date() };
+  const service = load("src/services/eventChangesService.ts", {
+    "../lib/eventChanges": changes,
+    "../lib/eventStatusStorage": { eventStatusStorage },
+    "../lib/calendarEventDetails": { buildCalendarEventDetails: () => details },
+    "../lib/calendarLinkStorage": { calendarLinkStorage: {
+      async get(id) { return links[id] ?? null; },
+      async remove(id) { delete links[id]; },
+    } },
+    "./calendarService": { calendarService: {
+      async ensurePermission() { return true; },
+      async eventExists(id) { return id === "cal-1"; },
+      async markCancelled(id) { calls.push(["cancel", id]); },
+      async rescheduleEvent(id, next) { calls.push(["reschedule", id, next]); },
+    } },
+    "./eventsRepository": { eventsRepository: { async getEvent() { return base; } } },
+  });
+
+  assert.equal(service.canUpdateCalendar("rescheduled"), true);
+  assert.equal(service.canUpdateCalendar("cancelled"), true);
+  assert.equal(service.canUpdateCalendar("venue"), false);
+
+  await service.updateCalendarForChange("event-1", "cancelled");
+  await service.updateCalendarForChange("event-1", "rescheduled");
+  assert.deepEqual(calls, [["cancel", "cal-1"], ["reschedule", "cal-1", details]]);
+
+  await assert.rejects(service.updateCalendarForChange("event-2", "cancelled"), /not in your calendar/);
+
+  links["event-1"] = "cal-gone";
+  await assert.rejects(service.updateCalendarForChange("event-1", "cancelled"), /no longer in your calendar/);
+  assert.equal(links["event-1"], undefined); // link cleared so the event can be re-added
 });
