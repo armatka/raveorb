@@ -117,14 +117,14 @@ export default function SubmitEventScreen() {
         <View style={styles.success}>
           <Ionicons name="checkmark-circle-outline" size={48} color={colors.success} />
           <Text style={styles.successTitle}>Thanks for contributing</Text>
-          <Text style={styles.body}>Thanks, your event will appear once it's reviewed.</Text>
+          <Text style={styles.body}>Thanks, your event will appear once it&apos;s reviewed.</Text>
           <Pressable onPress={() => router.back()} style={styles.primaryButton} accessibilityRole="button">
             <Text style={styles.primaryButtonText}>Done</Text>
           </Pressable>
         </View>
       ) : (
         <>
-          <Text style={styles.intro}>Share an underground or independent event that isn't on Ticketmaster. Every submission is reviewed before it appears in Discovery.</Text>
+          <Text style={styles.intro}>Share an underground or independent event that isn&apos;t on Ticketmaster. Every submission is reviewed before it appears in Discovery.</Text>
           <Field label="Event title *" value={title} onChangeText={setTitle} maxLength={150} />
           <DateInput label="Date *" value={date} onChange={setDate} />
           <View style={styles.timeRow}>

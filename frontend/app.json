@@ -34,6 +34,12 @@
           "photosPermission": "RaveOrb uses your photo library to add memories to your night journal."
         }
       ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "RaveOrb adds events you choose to your calendar."
+        }
+      ],
       "@react-native-community/datetimepicker"
     ]
   }

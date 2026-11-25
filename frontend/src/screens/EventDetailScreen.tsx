@@ -16,11 +16,14 @@ import { useFollowedArtists } from "../components/FollowButton";
 import { EmptyState } from "../components/EmptyState";
 import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
+import { buildCalendarEventDetails } from "../lib/calendarEventDetails";
+import { calendarLinkStorage } from "../lib/calendarLinkStorage";
 import { eventStatusStorage, type EventStatus } from "../lib/eventStatusStorage";
 import { formatEventDate, formatEventPrice, formatEventSchedule } from "../lib/eventFormatting";
 import { nightsStorage } from "../lib/nightsStorage";
 import { goBackOrReplace } from "../lib/navigation";
 import { showAlert } from "../lib/showAlert";
+import { calendarService } from "../services/calendarService";
 import { eventsRepository } from "../services/eventsRepository";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
@@ -49,6 +52,8 @@ export default function EventDetailScreen() {
   const [statusError, setStatusError] = useState(false);
   const [nightError, setNightError] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
+  const [calendarEventId, setCalendarEventId] = useState<string | null>(null);
+  const [calendarBusy, setCalendarBusy] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -64,6 +69,7 @@ export default function EventDetailScreen() {
         setLoadingNight(false);
         setStatusError(false);
         setNightError(false);
+        setCalendarEventId(null);
         return () => {
           isCurrent = false;
         };
@@ -78,7 +84,8 @@ export default function EventDetailScreen() {
         eventsRepository.getEvent(id),
         eventStatusStorage.get(id),
         nightsStorage.getBySourceEventId(id),
-      ]).then(([eventResult, statusResult, linkedNightResult]) => {
+        calendarService.resolveLinkedEvent(id),
+      ]).then(([eventResult, statusResult, linkedNightResult, calendarResult]) => {
         if (!isCurrent) return;
 
         if (eventResult.status === "fulfilled") {
@@ -92,6 +99,7 @@ export default function EventDetailScreen() {
         setLinkedNightId(linkedNightResult.status === "fulfilled" ? linkedNightResult.value?.id ?? null : null);
         setStatusError(statusResult.status === "rejected");
         setNightError(linkedNightResult.status === "rejected");
+        setCalendarEventId(calendarResult.status === "fulfilled" ? calendarResult.value : null);
       }).finally(() => {
         if (isCurrent) {
           setLoadingEvent(false);
@@ -188,6 +196,39 @@ export default function EventDetailScreen() {
     }
   };
 
+  const addToCalendar = async () => {
+    if (calendarEventId || calendarBusy) return;
+    setCalendarBusy(true);
+    try {
+      const granted = await calendarService.ensurePermission();
+      if (!granted) {
+        showAlert("Calendar access needed", "To add events, allow Calendar access for RaveOrb in your device Settings.");
+        return;
+      }
+      const existing = await calendarService.resolveLinkedEvent(id);
+      if (existing) {
+        setCalendarEventId(existing);
+        return;
+      }
+      const details = buildCalendarEventDetails(event);
+      if (!details) {
+        showAlert("Could not add to calendar", "This event's schedule could not be read.");
+        return;
+      }
+      const createdId = await calendarService.addEvent(details);
+      if (!createdId) {
+        showAlert("Could not add to calendar", "Calendar access is unavailable.");
+        return;
+      }
+      await calendarLinkStorage.set(id, createdId);
+      setCalendarEventId(createdId);
+    } catch {
+      showAlert("Could not add to calendar", "Please try again.");
+    } finally {
+      setCalendarBusy(false);
+    }
+  };
+
   return (
     <Screen edges={["left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
       <ScreenHeader onBack={() => goBackOrReplace("/(tabs)/events")} />
@@ -229,6 +270,42 @@ export default function EventDetailScreen() {
             })}
           </View>
         )}
+        {calendarService.isAvailable() ? (
+          <Pressable
+            style={({ pressed }) => [
+              styles.calendarButton,
+              calendarEventId && styles.calendarButtonAdded,
+              pressed && !calendarEventId && styles.statusButtonPressed,
+            ]}
+            onPress={() => { void addToCalendar(); }}
+            disabled={Boolean(calendarEventId) || calendarBusy}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: Boolean(calendarEventId) || calendarBusy }}
+            accessibilityLabel={calendarEventId ? "In your calendar" : "Add to calendar"}
+          >
+            {calendarBusy ? (
+              <ActivityIndicator color={colors.text} size="small" />
+            ) : (
+              <Ionicons
+                name={calendarEventId ? "checkmark-circle" : "calendar-outline"}
+                size={19}
+                color={calendarEventId ? colors.primary : colors.text}
+              />
+            )}
+            <Text style={[styles.calendarButtonText, calendarEventId && styles.calendarButtonTextAdded]}>
+              {calendarEventId ? "In your calendar" : "Add to calendar"}
+            </Text>
+          </Pressable>
+        ) : __DEV__ ? (
+          <Pressable
+            style={[styles.calendarButton, styles.calendarHint]}
+            disabled
+            accessibilityRole="button"
+            accessibilityState={{ disabled: true }}
+          >
+            <Text style={styles.calendarHintText}>Add to calendar (available in the full app)</Text>
+          </Pressable>
+        ) : null}
         {status === "attended" ? (
           loadingNight ? (
             <ActivityIndicator color={colors.primary} style={styles.statusLoader} />
@@ -452,6 +529,39 @@ const styles = StyleSheet.create({
   },
   primaryButtonPressed: {
     opacity: 0.78,
+  },
+  calendarButton: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+  },
+  calendarButtonAdded: {
+    borderColor: colors.primary,
+  },
+  calendarHint: {
+    minHeight: 36,
+  },
+  calendarHintText: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    textAlign: "center",
+  },
+  calendarButtonText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  calendarButtonTextAdded: {
+    color: colors.primary,
   },
   secondaryButton: {
     minHeight: 44,

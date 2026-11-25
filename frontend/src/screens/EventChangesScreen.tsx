@@ -3,14 +3,19 @@ import { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
+import { calendarLinkStorage } from "../lib/calendarLinkStorage";
 import { eventStatusStorage } from "../lib/eventStatusStorage";
 import { goBackOrReplace } from "../lib/navigation";
-import { listTrackedEventChanges, refreshTrackedEvents, type TrackedEventChanges } from "../services/eventChangesService";
+import { showAlert } from "../lib/showAlert";
+import { calendarService } from "../services/calendarService";
+import { canUpdateCalendar, listTrackedEventChanges, refreshTrackedEvents, updateCalendarForChange, type TrackedEventChanges } from "../services/eventChangesService";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
 
 export default function EventChangesScreen() {
   const [items, setItems] = useState<TrackedEventChanges[]>([]);
+  const [calendarLinks, setCalendarLinks] = useState<Record<string, string>>({});
+  const [updatingCalendar, setUpdatingCalendar] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
@@ -21,8 +26,11 @@ export default function EventChangesScreen() {
     setError("");
     refreshTrackedEvents().catch((cause: unknown) => {
       if (active) setError(cause instanceof Error ? cause.message : "Could not refresh saved events.");
-    }).then(() => listTrackedEventChanges()).then((result) => {
-      if (active) setItems(result);
+    }).then(() => Promise.all([listTrackedEventChanges(), calendarLinkStorage.list().catch(() => ({}))])).then(([result, links]) => {
+      if (active) {
+        setItems(result);
+        setCalendarLinks(links);
+      }
     }).catch(() => {
       if (active) setError("Could not load saved events.");
     }).finally(() => { if (active) setLoading(false); });
@@ -42,6 +50,24 @@ export default function EventChangesScreen() {
           {changes.map((change) => (
             <View key={change.kind} style={styles.row}>
               <Text style={styles.change}>{change.label}</Text>
+              {calendarService.isAvailable() && canUpdateCalendar(change.kind) && calendarLinks[id] ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Update calendar for ${change.label}`}
+                  disabled={updatingCalendar === `${id}:${change.kind}`}
+                  onPress={() => {
+                    setUpdatingCalendar(`${id}:${change.kind}`);
+                    void updateCalendarForChange(id, change.kind).then(() => {
+                      showAlert("Calendar updated", change.kind === "cancelled"
+                        ? "The calendar event is now marked CANCELLED."
+                        : "The calendar event was moved to the new time.");
+                    }).catch((cause: unknown) => {
+                      setError(cause instanceof Error ? cause.message : "Could not update your calendar.");
+                      void calendarLinkStorage.list().then(setCalendarLinks).catch(() => {});
+                    }).finally(() => setUpdatingCalendar(""));
+                  }}
+                ><Text style={styles.dismiss}>Update calendar</Text></Pressable>
+              ) : null}
               <Pressable accessibilityRole="button" accessibilityLabel={`Dismiss ${change.label}`} onPress={() => {
                 void eventStatusStorage.dismiss(id, change.kind).then(() => listTrackedEventChanges())
                   .then(setItems).catch(() => setError("Could not dismiss this change."));
