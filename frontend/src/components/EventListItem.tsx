@@ -14,6 +14,9 @@ type EventListItemProps = {
   event: EventEntry;
   status?: EventStatus;
   onStatusChange?: (status: EventStatus | null) => Promise<void>;
+  notInterested?: boolean;
+  onNotInterestedChange?: (value: boolean) => Promise<void>;
+  reason?: string;
 };
 
 const statusLabels: Record<EventStatus, string> = {
@@ -30,7 +33,7 @@ const statusIcons: Record<EventStatus, keyof typeof Ionicons.glyphMap> = {
 
 const statusCycle: Array<EventStatus | null> = [null, "interested", "going", "attended"];
 
-export function EventListItem({ event, status, onStatusChange }: EventListItemProps) {
+export function EventListItem({ event, status, onStatusChange, notInterested, onNotInterestedChange, reason }: EventListItemProps) {
   const nextStatus = statusCycle[(statusCycle.indexOf(status ?? null) + 1) % statusCycle.length];
   const handleStatusPress = () => {
     if (onStatusChange) void onStatusChange(nextStatus);
@@ -70,6 +73,7 @@ export function EventListItem({ event, status, onStatusChange }: EventListItemPr
           </Text>
         ) : null}
         <Text style={styles.genres} numberOfLines={1}>{event.genres.slice(0, 3).join(" · ")}</Text>
+        {reason ? <Text style={styles.reason}>{reason}</Text> : null}
       </View>
       </Pressable>
         {event.artists.length > 0 ? <View style={styles.artistLinks}><ArtistLinks names={event.artists} compact /></View> : null}
@@ -97,6 +101,9 @@ export function EventListItem({ event, status, onStatusChange }: EventListItemPr
             </Pressable>
           ) : null}
         </View>
+        {onNotInterestedChange ? <Pressable onPress={() => { void onNotInterestedChange(!notInterested); }} style={styles.notInterested} accessibilityRole="button" accessibilityLabel={notInterested ? `Undo not interested in ${event.title}` : `Not interested in ${event.title}`}>
+          <Text style={styles.notInterestedText}>{notInterested ? "Undo not interested" : "Not interested"}</Text>
+        </Pressable> : null}
     </View>
   );
 }
@@ -210,4 +217,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
     backgroundColor: "rgba(212, 175, 55, 0.12)",
   },
+  reason: { color: colors.textSecondary, fontSize: 12, marginTop: spacing.sm },
+  notInterested: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.lg },
+  notInterestedText: { color: colors.secondary, fontSize: 12, fontWeight: "700" },
 });

@@ -41,6 +41,10 @@ import {
   type DiscoveryRadiusKm,
 } from "../../lib/discoveryLocation";
 import { eventStatusStorage, type EventStatus } from "../../lib/eventStatusStorage";
+import { sortEventsForYou } from "../../lib/homeRecommendations";
+import { nightsStorage } from "../../lib/nightsStorage";
+import { notInterestedStorage } from "../../lib/notInterestedStorage";
+import { buildTasteProfile } from "../../lib/tasteProfile";
 import type { FollowedArtist } from "../../lib/artistMatching";
 import { followedArtistsStorage } from "../../lib/followedArtistsStorage";
 import { searchFollowedArtistEvents } from "../../services/artistAlertsService";
@@ -48,10 +52,12 @@ import { preferencesStorage } from "../../lib/preferencesStorage";
 import { showAlert } from "../../lib/showAlert";
 import { hasEventsApi } from "../../services/eventsApi";
 import { eventsDataMode, eventsRepository } from "../../services/eventsRepository";
+import { loadLinkedEvents } from "../../services/linkedEvents";
 import { isLocationSearchQuery, searchLocations } from "../../services/locationsApi";
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
 import type { CitySearchResult, DiscoveryLocation, EventEntry, RaveOrbCategory } from "../../types/event";
+import type { Night } from "../../types/Night";
 
 const primaryCategoryOptions: Array<{ label: string; value: ElectronicDiscoveryCategory }> = [
   { label: "All", value: "all" },
@@ -119,6 +125,14 @@ export default function EventsScreen() {
   const [followingEvents, setFollowingEvents] = useState<EventEntry[]>([]);
   const [followingLoading, setFollowingLoading] = useState(false);
   const [followingFailed, setFollowingFailed] = useState(0);
+  const [sortMode, setSortMode] = useState<"date" | "for-you">("date");
+  const [nights, setNights] = useState<Night[]>([]);
+  const [linkedEvents, setLinkedEvents] = useState<EventEntry[]>([]);
+  const [notInterested, setNotInterested] = useState<Set<string>>(new Set());
+  const [tasteLoading, setTasteLoading] = useState(true);
+  const [tasteUnavailable, setTasteUnavailable] = useState(false);
+  const [tastePartial, setTastePartial] = useState(false);
+  const [excludedError, setExcludedError] = useState(false);
   const following = selectedCategory === "following";
 
   useEffect(() => {
@@ -174,12 +188,20 @@ export default function EventsScreen() {
       let isCurrent = true;
       setNow(new Date());
       setLocationReady(false);
-      Promise.allSettled([eventStatusStorage.list(), loadDiscoverySettings(), followedArtistsStorage.list()])
-        .then(([statusResult, preferencesResult, followedResult]) => {
+      setTasteLoading(true);
+      Promise.allSettled([eventStatusStorage.list(), loadDiscoverySettings(), followedArtistsStorage.list(), nightsStorage.list(), notInterestedStorage.list()])
+        .then(async ([statusResult, preferencesResult, followedResult, nightResult, excludedResult]) => {
           if (!isCurrent) return;
           if (followedResult.status === "fulfilled") setFollowedArtists(followedResult.value);
+          else setFollowedArtists([]);
           if (statusResult.status === "fulfilled") setStatuses(statusResult.value);
           setStatusLoadError(statusResult.status === "rejected");
+          if (nightResult.status === "fulfilled") setNights(nightResult.value);
+          else setNights([]);
+          if (excludedResult.status === "fulfilled") setNotInterested(new Set(excludedResult.value));
+          setExcludedError(excludedResult.status === "rejected");
+          setTasteUnavailable(nightResult.status === "rejected" || followedResult.status === "rejected" || preferencesResult.status === "rejected");
+          setTastePartial(false);
           if (preferencesResult.status === "fulfilled") {
             const preferences = preferencesResult.value;
             setLocation(preferences.discoveryLocationConfigured ? preferences.discoveryLocation : DEFAULT_DISCOVERY_LOCATION);
@@ -190,6 +212,15 @@ export default function EventsScreen() {
           }
           setLocationError(preferencesResult.status === "rejected");
           setLocationReady(true);
+          try {
+            const ids = nightResult.status === "fulfilled" ? nightResult.value.flatMap((night) => night.sourceEventId ? [night.sourceEventId] : []) : [];
+            const result = await loadLinkedEvents(ids);
+            if (isCurrent) { setLinkedEvents(result.events); setTastePartial(result.failed > 0); }
+          } catch {
+            if (isCurrent) { setLinkedEvents([]); setTastePartial(true); }
+          } finally {
+            if (isCurrent) setTasteLoading(false);
+          }
         })
       return () => {
         isCurrent = false;
@@ -233,6 +264,7 @@ export default function EventsScreen() {
   );
 
   const followedKeys = useMemo(() => new Set(followedArtists.map((artist) => artist.normalizedName)), [followedArtists]);
+  const taste = useMemo(() => buildTasteProfile(nights, new Map(followedArtists.map((artist) => [artist.normalizedName, artist.name])), { favouriteCategories }, linkedEvents, now), [nights, followedArtists, favouriteCategories, linkedEvents, now]);
   const visibleEvents = useMemo(() => {
     const filtered = filterDiscoveryEvents(following ? followingEvents : events, query, {
       city: location?.city ?? null,
@@ -244,7 +276,13 @@ export default function EventsScreen() {
     }, now);
     return filterElectronicDiscoveryEvents(filtered, query, selectedCategory, favouriteCategories);
   }, [dateRange, events, favouriteCategories, followedKeys, following, followingEvents, location, now, query, selectedCategory]);
-  const sections = useMemo(() => groupDiscoveryEvents(visibleEvents, now), [now, visibleEvents]);
+  const ranked = useMemo(() => sortMode === "for-you" && !tasteLoading && !tasteUnavailable && !excludedError
+    ? sortEventsForYou(visibleEvents, taste, notInterested, now) : null,
+  [sortMode, taste, tasteLoading, tasteUnavailable, excludedError, visibleEvents, notInterested, now]);
+  const reasons = useMemo(() => new Map(ranked?.map(({ event, reason }) => [event.id, reason]) ?? []), [ranked]);
+  const sections = useMemo(() => ranked
+    ? ranked.length ? [{ id: "upcoming" as const, title: "For you", data: ranked.map(({ event }) => event) }] : []
+    : groupDiscoveryEvents(visibleEvents, now), [now, ranked, visibleEvents]);
   const isFiltered = Boolean(query.trim()) || selectedCategory !== "all" || dateRange !== "all-upcoming";
   const hasMore = !following && eventsDataMode === "api" && page + 1 < totalPages;
 
@@ -341,6 +379,20 @@ export default function EventsScreen() {
     }
   };
 
+  const updateNotInterested = async (event: EventEntry, value: boolean) => {
+    try {
+      await notInterestedStorage.set(event.id, value);
+      setNotInterested((current) => {
+        const next = new Set(current);
+        if (value) next.add(event.id);
+        else next.delete(event.id);
+        return next;
+      });
+    } catch {
+      showAlert("Could not update event", "Your preference was not saved. Please try again.");
+    }
+  };
+
   const locationLabel = location
     ? `${location.label}${hasDiscoveryCoordinates(location) ? ` · within ${radiusKm} km` : ""}`
     : allDiscoveryLocationsLabel();
@@ -394,6 +446,11 @@ export default function EventsScreen() {
           <Text style={styles.retryText}>Event statuses unavailable. Retry</Text>
         </Pressable>
       ) : null}
+      {excludedError || tasteUnavailable || tastePartial ? (
+        <Pressable onPress={() => setRetryToken((token) => token + 1)} style={styles.retryButton} accessibilityRole="button" accessibilityLabel="Retry loading recommendation data">
+          <Text style={styles.retryText}>{tastePartial && !tasteUnavailable && !excludedError ? "Some taste history is unavailable. Retry" : "Recommendation data unavailable. Retry"}</Text>
+        </Pressable>
+      ) : null}
       {eventsDataMode === "mock" ? <Text style={styles.mockNotice}>DEVELOPMENT SAMPLE EVENTS</Text> : null}
       <View style={styles.searchBox}>
         <Ionicons name="search" size={19} color={colors.muted} />
@@ -419,6 +476,10 @@ export default function EventsScreen() {
       </Pressable>
       {showMoreCategories ? <FilterRail label="MORE STYLES" options={secondaryCategoryOptions} selectedValues={[selectedCategory]} onSelect={(value) => setSelectedCategory(value as ElectronicDiscoveryCategory)} /> : null}
       <FilterRail label="WHEN" options={dateRangeOptions} selectedValues={[dateRange]} onSelect={(value) => setDateRange(value as DiscoveryDateRange)} />
+      <FilterRail label="SORT" options={[{ label: "Date", value: "date" }, { label: "For you", value: "for-you" }]} selectedValues={[sortMode]} onSelect={(value) => setSortMode(value === "for-you" ? "for-you" : "date")} />
+      {sortMode === "for-you" && tasteLoading ? <Text style={styles.mockNotice}>Loading your taste history…</Text> : null}
+      {sortMode === "for-you" && !tasteLoading && !tasteUnavailable && taste.coldStart ? <Pressable onPress={() => router.push("/preferences")} accessibilityRole="button" accessibilityLabel="Choose favourite styles"><Text style={styles.moreStylesText}>Pick your favourite styles to personalize your picks</Text></Pressable> : null}
+      {ranked ? <Text style={styles.mockNotice}>Sorted within loaded events</Text> : null}
       {following && followingFailed > 0 && !followingLoading ? (
         <Pressable onPress={() => setRetryToken((token) => token + 1)} style={styles.retryButton} accessibilityRole="button" accessibilityLabel="Retry searching followed artists">
           <Text style={styles.retryText}>{followingFailed === 1 ? "1 followed artist" : `${followingFailed} followed artists`} could not be searched. Retry</Text>
@@ -457,7 +518,8 @@ export default function EventsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshEvents} tintColor={colors.primary} colors={[colors.primary]} />}
         keyExtractor={(event) => event.id}
         renderItem={({ item }) => (
-          <EventListItem event={item} status={statusLoadError ? undefined : statuses[item.id]} onStatusChange={statusLoadError ? undefined : (nextStatus) => updateEventStatus(item, nextStatus)} />
+          <EventListItem event={item} status={statusLoadError ? undefined : statuses[item.id]} onStatusChange={statusLoadError ? undefined : (nextStatus) => updateEventStatus(item, nextStatus)}
+            notInterested={notInterested.has(item.id)} onNotInterestedChange={excludedError ? undefined : (value) => updateNotInterested(item, value)} reason={reasons.get(item.id)} />
         )}
         renderSectionHeader={({ section }) => <SectionHeading section={section} />}
         ItemSeparatorComponent={ItemSeparator}

@@ -15,6 +15,8 @@ import { DEFAULT_DISCOVERY_LOCATION, discoveryEventsQuery, loadDiscoverySettings
 import { formatEventDate } from "../lib/eventFormatting";
 import { goBackOrReplace } from "../lib/navigation";
 import { nightsStorage } from "../lib/nightsStorage";
+import { notInterestedStorage } from "../lib/notInterestedStorage";
+import { showAlert } from "../lib/showAlert";
 import { eventsRepository } from "../services/eventsRepository";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
@@ -31,14 +33,18 @@ export default function ArtistDetailScreen() {
   const [nightError, setNightError] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
   const [imageError, setImageError] = useState(false);
+  const [notInterested, setNotInterested] = useState<Set<string>>(new Set());
+  const [preferenceError, setPreferenceError] = useState(false);
 
   useFocusEffect(useCallback(() => {
     let active = true;
     setLoading(true);
-    Promise.allSettled([loadDiscoverySettings(), nightsStorage.list()]).then(async ([preferencesResult, nightResult]) => {
+    Promise.allSettled([loadDiscoverySettings(), nightsStorage.list(), notInterestedStorage.list()]).then(async ([preferencesResult, nightResult, excludedResult]) => {
       if (!active) return;
       setNights(nightResult.status === "fulfilled" ? nightResult.value : []);
       setNightError(nightResult.status === "rejected");
+      if (excludedResult.status === "fulfilled") setNotInterested(new Set(excludedResult.value));
+      setPreferenceError(excludedResult.status === "rejected");
       const preferences = preferencesResult.status === "fulfilled" ? preferencesResult.value : null;
       const location = preferences?.location ?? DEFAULT_DISCOVERY_LOCATION;
       try {
@@ -60,6 +66,19 @@ export default function ArtistDetailScreen() {
   const history = getArtistHistory(id ?? "", nights);
   const upcoming = getArtistUpcomingEvents(id ?? "", events, localDateKey(new Date()));
   const retry = () => setRetryToken((token) => token + 1);
+  const updateNotInterested = async (event: EventEntry, value: boolean) => {
+    try {
+      await notInterestedStorage.set(event.id, value);
+      setNotInterested((current) => {
+        const next = new Set(current);
+        if (value) next.add(event.id);
+        else next.delete(event.id);
+        return next;
+      });
+    } catch {
+      showAlert("Could not update event", "Your preference was not saved. Please try again.");
+    }
+  };
 
   return (
     <Screen edges={["left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
@@ -110,8 +129,9 @@ export default function ArtistDetailScreen() {
           )}
 
           <Text style={styles.sectionTitle}>UPCOMING EVENTS</Text>
+          {preferenceError ? <View style={styles.messageBlock}><Text style={styles.message}>Event preferences could not be loaded.</Text><RetryButton onPress={retry} /></View> : null}
           {eventError ? <View style={styles.messageBlock}><Text style={styles.message}>Upcoming events could not be loaded.</Text><RetryButton onPress={retry} /></View>
-            : upcoming.length ? upcoming.map((event) => <EventListItem key={event.id} event={event} />)
+            : upcoming.length ? upcoming.map((event) => <EventListItem key={event.id} event={event} notInterested={notInterested.has(event.id)} onNotInterestedChange={preferenceError ? undefined : (value) => updateNotInterested(event, value)} />)
               : <Text style={styles.message}>No upcoming events found.</Text>}
         </>
       )}
