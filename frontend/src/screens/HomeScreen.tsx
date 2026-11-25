@@ -15,10 +15,12 @@ import { eventStatusStorage, type EventStatus } from "../lib/eventStatusStorage"
 import { getHomeRecommendations } from "../lib/homeRecommendations";
 import { calculateNightStats } from "../lib/nightStats";
 import { nightsStorage } from "../lib/nightsStorage";
+import { notInterestedStorage } from "../lib/notInterestedStorage";
 import { homeOrbitReady } from "../lib/orbit";
 import { orbitDismissal } from "../lib/orbitDismissal";
 import { showAlert } from "../lib/showAlert";
 import { eventsRepository } from "../services/eventsRepository";
+import { loadLinkedEvents } from "../services/linkedEvents";
 import { listTrackedEventChanges, refreshTrackedEvents } from "../services/eventChangesService";
 import { listArtistAlerts, refreshArtistAlerts, unseenArtistAlerts } from "../services/artistAlertsService";
 import { countAlertArtists } from "../lib/artistMatching";
@@ -45,6 +47,11 @@ export default function HomeScreen() {
   const [changesError, setChangesError] = useState(false);
   const [alertArtistCount, setAlertArtistCount] = useState(0);
   const [followedArtists, setFollowedArtists] = useState<Map<string, string>>(new Map());
+  const [linkedEvents, setLinkedEvents] = useState<EventEntry[]>([]);
+  const [notInterested, setNotInterested] = useState<Set<string>>(new Set());
+  const [recommendationError, setRecommendationError] = useState(false);
+  const [recommendationUnavailable, setRecommendationUnavailable] = useState(false);
+  const [tasteLoading, setTasteLoading] = useState(true);
   const [dismissedOrbitYear, setDismissedOrbitYear] = useState<string | null>(null);
   const [dismissalLoaded, setDismissalLoaded] = useState(false);
 
@@ -52,6 +59,7 @@ export default function HomeScreen() {
     useCallback(() => {
       let isCurrent = true;
       setLoading(true);
+      setTasteLoading(true);
       setLoadError(false);
       setNow(new Date());
       setDismissalLoaded(false);
@@ -64,16 +72,13 @@ export default function HomeScreen() {
         .then(() => listTrackedEventChanges())
         .then((items) => { if (isCurrent) setChangedEventCount(items.filter((item) => item.changes.length > 0).length); })
         .catch(() => { if (isCurrent) setChangesError(true); });
-      followedArtistsStorage.list()
-        .then((artists) => { if (isCurrent) setFollowedArtists(new Map(artists.map((artist) => [artist.normalizedName, artist.name]))); })
-        .catch(() => undefined);
       refreshArtistAlerts()
         .catch(() => undefined)
         .then(() => listArtistAlerts())
         .then((alerts) => { if (isCurrent) setAlertArtistCount(countAlertArtists(unseenArtistAlerts(alerts))); })
         .catch(() => { if (isCurrent) setAlertArtistCount(0); });
-      Promise.allSettled([nightsStorage.list(), eventStatusStorage.list(), loadDiscoverySettings()])
-        .then(async ([nightResult, statusResult, preferencesResult]) => {
+      Promise.allSettled([nightsStorage.list(), eventStatusStorage.list(), loadDiscoverySettings(), followedArtistsStorage.list(), notInterestedStorage.list()])
+        .then(async ([nightResult, statusResult, preferencesResult, followedResult, excludedResult]) => {
           if (!isCurrent) return;
           if (nightResult.status === "fulfilled") {
             setNights(nightResult.value);
@@ -82,6 +87,11 @@ export default function HomeScreen() {
             setLoadError(true);
           }
           if (statusResult.status === "fulfilled") setStatuses(statusResult.value);
+          if (followedResult.status === "fulfilled") setFollowedArtists(new Map(followedResult.value.map((artist) => [artist.normalizedName, artist.name])));
+          else setFollowedArtists(new Map());
+          if (excludedResult.status === "fulfilled") setNotInterested(new Set(excludedResult.value));
+          setRecommendationUnavailable(nightResult.status === "rejected" || statusResult.status === "rejected" || excludedResult.status === "rejected");
+          setRecommendationError(followedResult.status === "rejected");
           const preferences = preferencesResult.status === "fulfilled" ? preferencesResult.value : null;
           const discoveryLocation = preferences === null
             ? DEFAULT_DISCOVERY_LOCATION
@@ -89,6 +99,14 @@ export default function HomeScreen() {
           setDiscoveryCity(discoveryLocation?.city ?? null);
           setFavouriteCategories(preferences?.favouriteCategories ?? []);
           setLocationError(preferencesResult.status === "rejected");
+          loadLinkedEvents(nightResult.status === "fulfilled" ? nightResult.value.flatMap((night) => night.sourceEventId ? [night.sourceEventId] : []) : [])
+            .then((result) => {
+              if (!isCurrent) return;
+              setLinkedEvents(result.events);
+              if (result.failed) setRecommendationError(true);
+            }).catch(() => {
+              if (isCurrent) { setLinkedEvents([]); setRecommendationError(true); }
+            }).finally(() => { if (isCurrent) setTasteLoading(false); });
           try {
             const result = await eventsRepository.listEvents(discoveryEventsQuery(discoveryLocation, preferences?.radiusKm));
             await eventStatusStorage.backfillSnapshots(result);
@@ -121,10 +139,18 @@ export default function HomeScreen() {
   const allTimePulse = useMemo(() => calculateNightStats(nights, null, now), [nights, now]);
   const yearPulse = useMemo(() => calculateNightStats(nights, currentYear, now), [currentYear, nights, now]);
   const recommendations = useMemo(
-    () => getHomeRecommendations(nights, events, statuses, now, 3, discoveryCity, favouriteCategories, followedArtists),
-    [discoveryCity, events, favouriteCategories, followedArtists, nights, now, statuses],
+    () => getHomeRecommendations(nights, events, statuses, now, 10, discoveryCity, favouriteCategories, followedArtists, linkedEvents, notInterested),
+    [discoveryCity, events, favouriteCategories, followedArtists, linkedEvents, nights, notInterested, now, statuses],
   );
-  const hasJournalBasedRecommendations = recommendations.some((item) => item.reason !== "Upcoming event in Discovery");
+  const coldStart = nights.length === 0 && followedArtists.size === 0 && favouriteCategories.length === 0;
+  const dismissRecommendation = async (id: string) => {
+    try {
+      await notInterestedStorage.set(id, true);
+      setNotInterested((current) => new Set([...current, id]));
+    } catch {
+      showAlert("Could not update event", "Your preference was not saved. Please try again.");
+    }
+  };
   const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const nextEvent = useMemo(() => {
     const futureEvents = events
@@ -254,19 +280,25 @@ export default function HomeScreen() {
           </View>
 
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>For you</Text>
-            <Text style={styles.sectionMeta}>{discoveryCity ?? (hasJournalBasedRecommendations ? "Journal-based" : "Discovery")}</Text>
+            <Text style={styles.sectionTitle}>Picked for you</Text>
+            <Text style={styles.sectionMeta}>{discoveryCity ?? "Discovery"}</Text>
           </View>
           <Text style={styles.sectionDescription}>
-            {hasJournalBasedRecommendations
-              ? "Selected from genres and places in your journal history."
-              : "Upcoming events from Discovery. Log attended genres or highly rated places to shape future picks."}
+            {coldStart ? "Upcoming events from Discovery." : "Selected from your Nights, followed artists and favourite styles."}
           </Text>
+          {!loading && !tasteLoading && coldStart && !recommendationError && !recommendationUnavailable && !locationError ? (
+            <Pressable onPress={() => router.push("/preferences")} accessibilityRole="button" accessibilityLabel="Choose favourite styles"><Text style={styles.sectionMeta}>Pick your favourite styles to personalize your picks</Text></Pressable>
+          ) : null}
+          {!loading && (recommendationError || recommendationUnavailable) ? (
+            <Pressable onPress={() => setRetryToken((token) => token + 1)} accessibilityRole="button" accessibilityLabel="Retry loading recommendation data">
+              <Text style={styles.inlineMessage}>{recommendationUnavailable ? "Recommendation data unavailable. Retry" : "Some taste history could not be loaded. Picks may be incomplete. Retry"}</Text>
+            </Pressable>
+          ) : null}
 
-          {loading ? (
+          {loading || tasteLoading ? (
             <ActivityIndicator color={colors.primary} style={styles.inlineLoader} />
-          ) : eventLoadError || locationError ? (
-            <Text style={styles.inlineMessage}>Recommendations are unavailable while Discovery cannot be reached.</Text>
+          ) : eventLoadError || locationError || recommendationUnavailable ? (
+            <Text style={styles.inlineMessage}>Recommendations are unavailable. Please retry loading your data.</Text>
           ) : recommendations.length > 0 ? (
             <ScrollView
               horizontal
@@ -281,6 +313,7 @@ export default function HomeScreen() {
                 subtitle={reason}
                 tag={event.genres.slice(0, 2).join(" · ") || event.type}
                 onPress={() => router.push({ pathname: "/event/[id]", params: { id: event.id } })}
+                onNotInterested={() => { void dismissRecommendation(event.id); }}
               />
             ))}
             </ScrollView>

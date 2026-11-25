@@ -1,5 +1,4 @@
-import { StyleSheet, Text, View } from "react-native";
-import { Pressable } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
@@ -9,6 +8,7 @@ type RecommendationCardProps = {
   subtitle: string;
   tag: string;
   onPress?: () => void;
+  onNotInterested?: () => void;
 };
 
 export default function RecommendationCard({
@@ -16,22 +16,20 @@ export default function RecommendationCard({
   subtitle,
   tag,
   onPress,
+  onNotInterested,
 }: RecommendationCardProps) {
-  const content = (
-    <View style={styles.card}>
-      <View style={styles.accentRule} />
-      <Text style={styles.tag}>{tag}</Text>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.subtitle}>{subtitle}</Text>
-    </View>
-  );
-
-  if (!onPress) return content;
-
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => pressed && styles.pressed} accessibilityRole="button" accessibilityLabel={`${title}, ${subtitle}`}>
-      {content}
-    </Pressable>
+    <View style={styles.card}>
+      <Pressable onPress={onPress} disabled={!onPress} style={({ pressed }) => pressed && styles.pressed} accessibilityRole="button" accessibilityLabel={`${title}, ${subtitle}`}>
+        <View style={styles.accentRule} />
+        <Text style={styles.tag}>{tag}</Text>
+        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.subtitle}>{subtitle}</Text>
+      </Pressable>
+      {onNotInterested ? <Pressable onPress={onNotInterested} style={styles.dismiss} accessibilityRole="button" accessibilityLabel={`Not interested in ${title}`}>
+        <Text style={styles.dismissText}>Not interested</Text>
+      </Pressable> : null}
+    </View>
   );
 }
 
@@ -73,4 +71,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
+  dismiss: { minHeight: 44, justifyContent: "center", marginTop: spacing.sm },
+  dismissText: { color: colors.secondary, fontSize: 12, fontWeight: "700" },
 });

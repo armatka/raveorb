@@ -120,7 +120,8 @@ test("event lookup deduplicates, caps at 50, limits concurrency and caches succe
     if (id === "00") throw new Error("offline");
     return id === "01" ? null : { id, raveOrbCategory: "Techno" };
   } };
-  const { loadOrbitEvents } = load("services/orbitEvents.ts", { "./eventsRepository": { eventsRepository: repository }, "../lib/orbit": orbitModule });
+  const linkedEvents = load("services/linkedEvents.ts", { "./eventsRepository": { eventsRepository: repository } });
+  const { loadOrbitEvents } = load("services/orbitEvents.ts", { "./linkedEvents": linkedEvents, "../lib/orbit": orbitModule });
   const nights = Array.from({ length: 55 }, (_, i) => night(String(i), "2026-01-01", { sourceEventId: String(i).padStart(2, "0") }));
   const [first, overlapping] = await Promise.all([loadOrbitEvents(nights, "2026"), loadOrbitEvents(nights, "2026")]);
   assert.equal(max, 3);
