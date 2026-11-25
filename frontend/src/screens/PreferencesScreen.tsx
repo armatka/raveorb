@@ -119,6 +119,15 @@ export default function PreferencesScreen() {
             ))
           ) : <Text style={styles.helper}>Save a city from the Discovery location picker.</Text>}
 
+          <Section title="FOLLOWING" />
+          <Pressable onPress={() => router.push("/following")} style={styles.cityRow} accessibilityRole="button" accessibilityLabel="Open Following">
+            <View style={styles.cityCopy}>
+              <Text style={styles.cityName}>Artists you follow</Text>
+              <Text style={styles.cityDetails}>Manage follows and see suggestions from your Nights</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
+          </Pressable>
+
           <Section title="FAVOURITE STYLES" />
           <Text style={styles.helper}>Choose any styles for Discovery and Home recommendations.</Text>
           <View style={styles.chipWrap}>

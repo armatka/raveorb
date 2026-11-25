@@ -1,9 +1,10 @@
+import { matchFollowedArtists } from "./artistMatching";
 import type { EventEntry, EventType, RaveOrbCategory } from "../types/event";
 
 export type DiscoverySectionId = "tonight" | "weekend" | "next-7-days" | "upcoming";
 export type DiscoveryDateRange = "tonight" | "weekend" | "next-7-days" | "next-30-days" | "all-upcoming";
 export type DiscoveryTypeFilter = "all" | EventType;
-export type ElectronicDiscoveryCategory = "all" | "festivals" | "favourites" | "Bass" | RaveOrbCategory;
+export type ElectronicDiscoveryCategory = "all" | "festivals" | "favourites" | "following" | "Bass" | RaveOrbCategory;
 export const ELECTRONIC_DISCOVERY_THRESHOLD = 60;
 
 export type DiscoveryFilters = {
@@ -12,6 +13,8 @@ export type DiscoveryFilters = {
   genres: string[];
   type: DiscoveryTypeFilter;
   dateRange: DiscoveryDateRange;
+  /** When set, only events whose normalized lineup includes one of these artists are kept. */
+  followedArtists?: ReadonlySet<string>;
 };
 
 export type EventSection = {
@@ -25,7 +28,7 @@ function matchesElectronicCategory(
   selected: ElectronicDiscoveryCategory,
   favouriteCategories: RaveOrbCategory[],
 ): boolean {
-  if (selected === "all") return true;
+  if (selected === "all" || selected === "following") return true;
   if (selected === "festivals") return event.isFestival === true;
   if (selected === "favourites") return Boolean(event.raveOrbCategory && favouriteCategories.includes(event.raveOrbCategory));
   if (selected === "Bass") return event.raveOrbCategory === "Dubstep / Bass";
@@ -40,7 +43,8 @@ export function filterElectronicDiscoveryEvents(
   selected: ElectronicDiscoveryCategory = "all",
   favouriteCategories: RaveOrbCategory[] = [],
 ): EventEntry[] {
-  const explicitSearch = query.trim().length > 0;
+  // Followed artists were chosen explicitly, so their events skip the electronic score threshold.
+  const explicitSearch = query.trim().length > 0 || selected === "following";
   return events.filter((event) => (explicitSearch || (event.electronicScore ?? 0) >= ELECTRONIC_DISCOVERY_THRESHOLD)
     && matchesElectronicCategory(event, selected, favouriteCategories))
     .sort((first, second) => first.date.localeCompare(second.date)
@@ -138,6 +142,7 @@ export function filterDiscoveryEvents(
     if (!filters.hasCoordinates && filters.city && event.city !== filters.city) return false;
     if (filters.type !== "all" && event.type !== filters.type) return false;
     if (filters.genres.length > 0 && !filters.genres.some((genre) => event.genres.includes(genre))) return false;
+    if (filters.followedArtists && matchFollowedArtists(event, filters.followedArtists).length === 0) return false;
     if (!matchesDiscoveryDateRange(event.date, filters.dateRange, now)) return false;
     if (!normalizedQuery) return true;
 

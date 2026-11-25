@@ -97,6 +97,16 @@ To add a provider:
 3. Register the adapter in `src/providers/registry.ts`; declare and parse any provider-specific public query parameters in the adapter.
 4. Add adapter and service tests for mapping, configuration, routing, and failures.
 
+## Following artists
+
+Follow artists from an artist page or the event detail lineup; manage follows and suggestions on the Following screen (from My RaveOrb or Preferences). Everything is stored on the device in `raveorb.followed-artists.v1`. Names are matched with the same normalization as artist pages (case and whitespace insensitive), and lineup entries such as `A b2b B` or `A, B` count for each artist; `&` and `and` are not split because they appear in act names. Suggestions come only from your Nights: artists seen at two or more Nights, or at a Night rated 4 or higher.
+
+Artist alerts run when Home loads, at most once every six hours per saved location and radius. Each refresh searches the existing events API once per followed artist (`keyword=<artist>`, saved location and radius, next 90 days), for up to 10 artists, rotating through longer lists and running at most 3 requests at a time. A keyword hit only counts if the normalized lineup contains the artist, not the title alone. An artist whose search fails is retried in the next window. Opening the alert list marks its events as seen, so the same event is not announced again. Followed-artist events also rank higher in Home recommendations.
+
+The Discovery "Following" chip runs the same per-artist search for every followed artist (3 at a time), cached for the app session; failed artists can be retried. There are no push notifications.
+
+Limitations: each artist search reads only the first 50 results, so an artist with more upcoming events than that within the window may be missed. A full alert pass over N followed artists takes ⌈N / 10⌉ refresh windows. Artists listed only in an event title, not its lineup, are not matched.
+
 ## City Search
 
 `GET /api/locations/search?q=Ottawa` searches cities through the backend's Open-Meteo Geocoding adapter. The trimmed query must contain 2–80 characters. The endpoint returns up to eight records with `id`, `label`, `city`, `countryCode`, `latitude`, `longitude`, and optional `region`, `country`, `timezone`, and `population`. Invalid input returns `400`; provider failures return `502` with a retryable message.

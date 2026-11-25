@@ -6,6 +6,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 
 import { EmptyState } from "../components/EmptyState";
 import { EventListItem } from "../components/EventListItem";
+import { FollowButton, isFollowingName, useFollowedArtists } from "../components/FollowButton";
 import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { getArtistHistory, getArtistUpcomingEvents, resolveArtist } from "../lib/artistResolver";
@@ -22,6 +23,7 @@ import type { EventEntry } from "../types/event";
 
 export default function ArtistDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const followed = useFollowedArtists();
   const [events, setEvents] = useState<EventEntry[]>([]);
   const [nights, setNights] = useState<Night[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,6 +74,9 @@ export default function ArtistDetailScreen() {
               <Text style={styles.eyebrow}>ARTIST</Text>
               <Text style={styles.name}>{artist.name}</Text>
               {artist.genres.length ? <Text style={styles.genres}>Event genres: {artist.genres.join(" · ")}</Text> : null}
+              <View style={styles.follow}>
+                <FollowButton name={artist.name} following={isFollowingName(artist.name, followed.keys)} onPress={() => { void followed.toggle(artist.name); }} />
+              </View>
             </View>
           </View>
 
@@ -127,6 +132,7 @@ const styles = StyleSheet.create({
   heroText: { flex: 1, minWidth: 0 },
   eyebrow: { color: colors.secondary, fontSize: 10, fontWeight: "700", marginBottom: spacing.xs },
   name: { color: colors.text, fontSize: 28, fontWeight: "700" },
+  follow: { flexDirection: "row", marginTop: spacing.sm },
   genres: { color: colors.textSecondary, fontSize: 13, lineHeight: 20, marginTop: spacing.xs },
   sectionTitle: { color: colors.secondary, fontSize: 11, fontWeight: "700", marginTop: spacing.lg, marginBottom: spacing.md },
   summary: { flexDirection: "row", gap: spacing.md, marginBottom: spacing.md },

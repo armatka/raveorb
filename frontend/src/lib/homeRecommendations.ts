@@ -1,3 +1,4 @@
+import { lineupArtistNames, matchFollowedArtists } from "./artistMatching";
 import type { EventEntry } from "../types/event";
 import type { EventStatus } from "./eventStatusStorage";
 import type { Night } from "../types/Night";
@@ -29,7 +30,9 @@ export function getHomeRecommendations(
   limit = 3,
   city: string | null = null,
   favouriteCategories: RaveOrbCategory[] = [],
+  followedArtists: ReadonlyMap<string, string> = new Map(),
 ): HomeRecommendation[] {
+  const followedKeys = new Set(followedArtists.keys());
   const eventById = new Map(events.map((event) => [event.id, event]));
   const attendedEventIds = new Set(
     Object.entries(statuses)
@@ -47,10 +50,7 @@ export function getHomeRecommendations(
       highlyRatedCities.add(normalize(night.city));
       highlyRatedVenues.add(normalize(night.venueName));
     }
-    for (const artist of night.artistsSeen) {
-      const normalizedArtist = normalize(artist);
-      if (normalizedArtist) seenArtists.add(normalizedArtist);
-    }
+    for (const { key } of lineupArtistNames(night.artistsSeen)) seenArtists.add(key);
   }
 
   for (const eventId of attendedEventIds) {
@@ -59,7 +59,7 @@ export function getHomeRecommendations(
   }
 
   for (const event of events) {
-    if (event.artists.some((artist) => seenArtists.has(normalize(artist)))) {
+    if (lineupArtistNames(event.artists).some(({ key }) => seenArtists.has(key))) {
       event.genres.forEach((genre) => attendedGenres.add(normalize(genre)));
     }
   }
@@ -73,8 +73,11 @@ export function getHomeRecommendations(
       const cityMatch = highlyRatedCities.has(normalize(event.city));
       const venueMatch = highlyRatedVenues.has(normalize(event.venueName));
       const favouriteStyleMatch = Boolean(event.raveOrbCategory && favouriteCategories.includes(event.raveOrbCategory));
-      const score = matchedGenres.length * 4 + (venueMatch ? 5 : 0) + (cityMatch ? 2 : 0) + (favouriteStyleMatch ? 6 : 0);
+      const followedMatches = matchFollowedArtists(event, followedKeys);
+      const score = matchedGenres.length * 4 + (venueMatch ? 5 : 0) + (cityMatch ? 2 : 0) + (favouriteStyleMatch ? 6 : 0)
+        + (followedMatches.length ? 10 : 0);
       const reasonParts: string[] = [];
+      if (followedMatches.length > 0) reasonParts.push(`An artist you follow: ${followedMatches.slice(0, 2).map((key) => followedArtists.get(key) ?? key).join(", ")}`);
       if (matchedGenres.length > 0) reasonParts.push(`Genres you saw: ${matchedGenres.slice(0, 2).join(", ")}`);
       if (favouriteStyleMatch) reasonParts.push("One of your favourite styles");
       if (venueMatch) reasonParts.push("A venue you rated highly");
