@@ -21,6 +21,8 @@ import { calendarLinkStorage } from "../lib/calendarLinkStorage";
 import { eventStatusStorage, type EventStatus } from "../lib/eventStatusStorage";
 import { formatEventDate, formatEventPrice, formatEventSchedule } from "../lib/eventFormatting";
 import { nightsStorage } from "../lib/nightsStorage";
+import { isBeaconWindow } from "../lib/beacon";
+import { useBeaconDevOverrides } from "../lib/beaconDevOverrides";
 import { goBackOrReplace } from "../lib/navigation";
 import { showAlert } from "../lib/showAlert";
 import { calendarService } from "../services/calendarService";
@@ -40,6 +42,7 @@ const statusOptions: Array<{
 ];
 
 export default function EventDetailScreen() {
+  useBeaconDevOverrides();
   const { id } = useLocalSearchParams<{ id: string }>();
   const followed = useFollowedArtists();
   const [event, setEvent] = useState<EventEntry | null>(null);
@@ -54,10 +57,13 @@ export default function EventDetailScreen() {
   const [retryToken, setRetryToken] = useState(0);
   const [calendarEventId, setCalendarEventId] = useState<string | null>(null);
   const [calendarBusy, setCalendarBusy] = useState(false);
+  const [now, setNow] = useState(() => new Date());
 
   useFocusEffect(
     useCallback(() => {
       let isCurrent = true;
+      setNow(new Date());
+      const timer = setInterval(() => setNow(new Date()), 30000);
 
       if (!id) {
         setEvent(null);
@@ -72,6 +78,7 @@ export default function EventDetailScreen() {
         setCalendarEventId(null);
         return () => {
           isCurrent = false;
+          clearInterval(timer);
         };
       }
 
@@ -110,6 +117,7 @@ export default function EventDetailScreen() {
 
       return () => {
         isCurrent = false;
+        clearInterval(timer);
       };
     }, [id, retryToken]),
   );
@@ -270,6 +278,15 @@ export default function EventDetailScreen() {
             })}
           </View>
         )}
+        {status === "going" && !loadingStatus && !statusError && isBeaconWindow(event, now) ? (
+          <Pressable
+            style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
+            onPress={() => router.push({ pathname: "/beacon/[id]", params: { id: event.id } })}
+            accessibilityRole="button"
+          >
+            <Text style={styles.primaryButtonText}>Beacon</Text>
+          </Pressable>
+        ) : null}
         {calendarService.isAvailable() ? (
           <Pressable
             style={({ pressed }) => [

@@ -1,5 +1,8 @@
 import type { NightInput } from "../types/Night";
 import { nightsStorage } from "./nightsStorage";
+import { eventStatusStorage } from "./eventStatusStorage";
+import { beaconStorage } from "./beaconStorage";
+import { createSampleEvent, sampleEventStorage } from "./sampleEvent";
 
 const samples: NightInput[] = [
   { date: "2026-01-09", eventName: "[Sample] Winter Frequencies", venueName: "The Lantern", city: "Toronto", artistsSeen: ["Nova Echo", "Glass Current"], friends: ["Sam", "Alex"], rating: 5, cost: 65, currency: "CAD", favoriteMoment: "The room lit up for the final track.", notes: "", photos: [] },
@@ -14,6 +17,18 @@ const samples: NightInput[] = [
 
 export async function loadSampleNights(): Promise<void> {
   for (const sample of samples) await nightsStorage.create(sample);
+  await removeSampleEvent();
+  const event = createSampleEvent();
+  await sampleEventStorage.set(event);
+  await eventStatusStorage.set(event.id, "going", event);
+}
+
+async function removeSampleEvent(): Promise<void> {
+  const event = await sampleEventStorage.get();
+  if (!event) return;
+  await eventStatusStorage.remove(event.id);
+  await beaconStorage.remove(event.id);
+  await sampleEventStorage.remove();
 }
 
 export async function removeSampleNights(): Promise<void> {
@@ -21,4 +36,5 @@ export async function removeSampleNights(): Promise<void> {
   for (const night of nights) {
     if (night.eventName.startsWith("[Sample]")) await nightsStorage.remove(night.id);
   }
+  await removeSampleEvent();
 }
