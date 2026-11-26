@@ -16,5 +16,5 @@ const styles = StyleSheet.create({
   secondary: { backgroundColor: theme.colors.surface, borderColor: theme.colors.secondary, borderWidth: 1 },
   text: { color: theme.controls.button.textColor, fontSize: 16, fontWeight: "700", textAlign: "center" },
   secondaryText: { color: theme.colors.text },
-  pressed: { opacity: 0.75 },
+  pressed: { opacity: theme.pressed.opacity, transform: [{ scale: theme.pressed.scale }] },
 });

@@ -17,15 +17,22 @@ import { theme } from "../theme/theme";
 type LogoProps = {
   size?: number;
   background?: "dark" | "light";
+  animated?: boolean;
   style?: StyleProp<ViewStyle>;
 };
 
-export default function Logo({ size = 220, background = "dark", style }: LogoProps) {
+export default function Logo({ size, background = "dark", animated = true, style }: LogoProps) {
   const { width: viewportWidth } = useWindowDimensions();
-  const responsiveSize = Math.min(size, viewportWidth * 0.78, 320);
+  const responsiveSize = size ?? Math.min(220, viewportWidth * 0.78, 320);
   const pulse = useSharedValue(0);
 
   useEffect(() => {
+    if (!animated) {
+      cancelAnimation(pulse);
+      pulse.value = 0;
+      return;
+    }
+
     pulse.value = withRepeat(
       withSequence(
         withTiming(1, { duration: 3000, easing: Easing.inOut(Easing.ease) }),
@@ -36,7 +43,7 @@ export default function Logo({ size = 220, background = "dark", style }: LogoPro
     );
 
     return () => cancelAnimation(pulse);
-  }, [pulse]);
+  }, [animated, pulse]);
 
   const glowStyle = useAnimatedStyle(() => ({
     opacity: 0.62 + pulse.value * 0.24,
