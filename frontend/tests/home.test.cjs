@@ -78,40 +78,40 @@ test("home hero disables the logo pulse when unfocused or reduced motion is enab
   }
 });
 
-test("home icon bar labels and routes all three accessible buttons", () => {
+test("home icon bar matches panel icons and routes with four labelled buttons", () => {
   const paths = [];
   const { HomeIconBar } = load("components/home/HomeIconBar.tsx", {
     ...base,
     "react-native": rn,
     "@expo/vector-icons": icon,
-    "react-native-svg": { __esModule: true, default: "Svg", Circle: "Circle", Ellipse: "Ellipse" },
     "expo-router": { router: { push: (route) => paths.push(route) } },
   });
   const bar = HomeIconBar({ alertCount: 7 });
   const buttons = find(bar, (element) => element.type === "Pressable");
+  const profile = homeContent.panels.find((panel) => panel.key === "profile");
+  const orbit = homeContent.panels.find((panel) => panel.key === "orbit");
+  const artists = homeContent.panels.find((panel) => panel.key === "artist-alerts");
   assert.deepEqual(buttons.map((button) => button.props.accessibilityLabel), [
-    homeContent.hero.profile, homeContent.hero.venues, homeContent.hero.artistAlertsCount(7),
+    profile.title, orbit.title, homeContent.hero.venues, homeContent.hero.artistAlertsCount(7),
   ]);
   assert.ok(buttons.every((button) => button.props.accessibilityRole === "button"));
-  assert.deepEqual(buttons.map((button) => button.props.testID), ["home-profile-button", "home-venues-button", "home-artist-alerts-button"]);
+  assert.deepEqual(buttons.map((button) => button.props.testID), ["home-profile-button", "home-orbit-button", "home-venues-button", "home-artist-alerts-button"]);
   const styles = buttons.map((button) => button.props.style({ pressed: false })[0]);
   const buttonStyle = styles[0];
   assert.ok(styles.every((style) => style.width === buttonStyle.width && style.width >= 44 && style.minHeight >= 44));
   for (const viewport of [320, 375]) {
-    assert.ok(styles.reduce((width, style) => width + style.width, 0) + 2 * spacing.spacing.sm <= viewport - 2 * spacing.spacing.lg);
+    assert.ok(styles.reduce((width, style) => width + style.width, 0) + (buttons.length - 1) * bar.props.style.gap <= viewport - 2 * spacing.spacing.lg);
   }
   assert.deepEqual(buttons[0].props.style({ pressed: true })[1].transform, [{ scale: theme.theme.pressed.scale }]);
   const labels = buttons.map((button) => find(button, (element) => element.type === "Text")[0]);
-  assert.deepEqual(labels.map((label) => label.props.children), [homeContent.hero.profile, "Venues", "Artists"]);
+  assert.deepEqual(labels.map((label) => label.props.children), ["My RaveOrb", "Orbit", "Venues", "Artists"]);
   assert.ok(labels.every((label) => label.props.numberOfLines === 1));
-  const orb = find(buttons[0], (element) => element.type === "Circle" || element.type === "Ellipse");
-  assert.equal(orb.length, 3);
-  assert.deepEqual(orb.map((element) => element.props.stroke ?? element.props.fill), [colors.colors.secondary, colors.colors.secondary, colors.colors.secondary]);
-  assert.deepEqual(orb.slice(0, 2).map((element) => element.props.fill), ["none", "none"]);
-  assert.ok(orb[2].props.fillOpacity > 0 && orb[2].props.fillOpacity < 1);
-  assert.equal(find(buttons[2], (element) => element.type === "Text")[1].props.children, "7");
+  const icons = buttons.map((button) => find(button, (element) => element.type === "Ionicons")[0]);
+  assert.deepEqual(icons.map((icon) => icon.props.name), [profile.icon, orbit.icon, "location", artists.icon]);
+  assert.ok(icons.every((icon) => icon.props.size === 24 && icon.props.color === colors.colors.secondary));
+  assert.equal(find(buttons[3], (element) => element.type === "Text")[1].props.children, "7");
   buttons.forEach((button) => button.props.onPress());
-  assert.deepEqual(paths, ["/my-raveorb", "/venues", "/artist-alerts"]);
+  assert.deepEqual(paths, [profile.route, orbit.route, "/venues", artists.route]);
 });
 
 test("Logo uses an explicit size without clamping and stops its pulse when animation is disabled", () => {
