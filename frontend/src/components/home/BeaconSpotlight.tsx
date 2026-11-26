@@ -2,9 +2,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useIsFocused } from "expo-router";
 import { useEffect, useState } from "react";
-import { AccessibilityInfo, Animated, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { homeContent } from "../../constants/homeContent";
+import { useReduceMotion } from "../../lib/useReduceMotion";
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
 import { theme } from "../../theme/theme";
@@ -14,23 +15,8 @@ import { HomeButton } from "./HomeButton";
 export function BeaconSpotlight({ events, loadError, onRetry }: { events: EventEntry[]; loadError: boolean; onRetry: () => void }) {
   const { beacon } = homeContent;
   const focused = useIsFocused();
-  const [reduceMotion, setReduceMotion] = useState(true);
+  const reduceMotion = useReduceMotion();
   const [glow] = useState(() => new Animated.Value(0.55));
-
-  useEffect(() => {
-    let active = true;
-    let changed = false;
-    const subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", (value) => {
-      changed = true;
-      setReduceMotion(value);
-    });
-    AccessibilityInfo.isReduceMotionEnabled().then((value) => {
-      if (active && !changed) setReduceMotion(value);
-    }).catch((error: unknown) => {
-      console.warn("Could not read reduce-motion setting; Beacon animation is disabled.", error);
-    });
-    return () => { active = false; subscription.remove(); };
-  }, []);
 
   useEffect(() => {
     if (reduceMotion || !focused) {

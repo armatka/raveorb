@@ -99,15 +99,14 @@ function spotlight({ reduceMotion = true, focused = true } = {}) {
   const screen = load("components/home/BeaconSpotlight.tsx", {
     ...base,
     react: {
-      useState: (initial) => [typeof initial === "boolean" ? reduceMotion : initial(), () => {}],
+      useState: (initial) => [initial(), () => {}],
       useEffect: (effect) => effects.push(effect),
     },
-    "react-native": { ...rn, Animated: animated, Platform: { OS: "ios" }, AccessibilityInfo: {
-      addEventListener: () => ({ remove() {} }), isReduceMotionEnabled: async () => reduceMotion,
-    } },
+    "react-native": { ...rn, Animated: animated, Platform: { OS: "ios" } },
     "@expo/vector-icons": icon,
     "expo-linear-gradient": { LinearGradient: "LinearGradient" },
     "expo-router": { router: { push: (route) => paths.push(route) }, useIsFocused: () => focused },
+    "../../lib/useReduceMotion": { useReduceMotion: () => reduceMotion },
     "./HomeButton": { HomeButton: "HomeButton" },
   }).BeaconSpotlight({ events: [{ id: "1", title: "Test event" }], loadError: false, onRetry() {} });
   return { screen, effects, paths, counts: () => ({ started, stopped }) };
@@ -127,11 +126,36 @@ test("Beacon CTA and Tonight card navigate to the correct routes without promisi
 test("spotlight pulse only runs when focused and reduced motion is off", () => {
   for (const [reduced, focused, expected] of [[true, true, 0], [false, false, 0], [false, true, 1]]) {
     const result = spotlight({ reduceMotion: reduced, focused });
-    const cleanup = result.effects[1]();
+    const cleanup = result.effects[0]();
     assert.equal(result.counts().started, expected);
     if (cleanup) cleanup();
     assert.equal(result.counts().stopped, expected);
   }
+});
+
+test("useReduceMotion defaults on, reads the system setting and tracks live changes", async () => {
+  let state = true;
+  let listener;
+  let removed = false;
+  const effects = [];
+  const { useReduceMotion } = load("lib/useReduceMotion.ts", {
+    react: {
+      useState: (initial) => [initial, (value) => { state = value; }],
+      useEffect: (effect) => effects.push(effect),
+    },
+    "react-native": { AccessibilityInfo: {
+      addEventListener: (name, handler) => { listener = handler; return { remove() { removed = true; } }; },
+      isReduceMotionEnabled: async () => false,
+    } },
+  });
+  assert.equal(useReduceMotion(), true);
+  const cleanup = effects[0]();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(state, false);
+  listener(true);
+  assert.equal(state, true);
+  cleanup();
+  assert.equal(removed, true);
 });
 
 test("Home retains the requested section order and only passes eligible events to the spotlight", () => {

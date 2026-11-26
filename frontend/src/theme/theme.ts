@@ -24,6 +24,17 @@ export const theme = {
     lg: 16,
     xl: 20,
   },
+  typography: {
+    headline: { fontSize: 34, lineHeight: 42, fontWeight: "800" },
+    title: { fontSize: 19, lineHeight: 26, fontWeight: "700" },
+    body: { fontSize: 15, lineHeight: 22 },
+    caption: { fontSize: 14, lineHeight: 21 },
+  },
+  touchTarget: 44,
+  pressed: {
+    scale: 0.97,
+    opacity: 0.75,
+  },
   controls: {
     input: {
       backgroundColor: colors.surface,
