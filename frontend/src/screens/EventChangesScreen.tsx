@@ -38,7 +38,7 @@ export default function EventChangesScreen() {
   }, [retry]));
 
   return (
-    <Screen edges={["top", "left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
+    <Screen edges={["left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
       <ScreenHeader title="Your events" onBack={() => goBackOrReplace("/(tabs)")} />
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {loading ? <ActivityIndicator color={colors.primary} /> : items.length ? items.map(({ id, entry, changes }) => (

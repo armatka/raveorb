@@ -61,7 +61,7 @@ export default function StatsScreen() {
   );
 
   return (
-    <Screen edges={["top", "left", "right"]} style={styles.screen}>
+    <Screen edges={["left", "right"]} style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View>

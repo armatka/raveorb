@@ -36,7 +36,7 @@ export default function VenuesScreen() {
   );
 
   return (
-    <Screen edges={["top", "left", "right"]} scrollable style={styles.container} contentContainerStyle={styles.content}>
+    <Screen edges={["left", "right"]} scrollable style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Favorite venues</Text>
 
       {loading ? <ActivityIndicator color={colors.primary} style={styles.loader} /> : null}

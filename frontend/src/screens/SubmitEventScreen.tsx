@@ -111,7 +111,7 @@ export default function SubmitEventScreen() {
   };
 
   return (
-    <Screen edges={["top", "left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
+    <Screen edges={["left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
       <ScreenHeader title="Submit an event" onBack={() => router.back()} />
       {submitted ? (
         <View style={styles.success}>

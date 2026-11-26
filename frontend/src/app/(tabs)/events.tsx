@@ -512,7 +512,7 @@ export default function EventsScreen() {
     : { title: "No events found", message: location ? `No events found in ${location.city} with these filters.` : "No events found with these filters." };
 
   return (
-    <Screen edges={["top", "left", "right"]} style={styles.container}>
+    <Screen edges={["left", "right"]} style={styles.container}>
       <SectionList
         sections={(eventLoadError && !following) || (following && followingLoading) ? [] : sections}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshEvents} tintColor={colors.primary} colors={[colors.primary]} />}

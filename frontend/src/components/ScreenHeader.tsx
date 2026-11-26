@@ -1,6 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
@@ -19,10 +18,8 @@ type ScreenHeaderProps = {
 };
 
 export function ScreenHeader({ title, onBack, actions = [] }: ScreenHeaderProps) {
-  const insets = useSafeAreaInsets();
-
   return (
-    <View style={[styles.safeHeader, { paddingTop: insets.top + spacing.sm }]}>
+    <View style={styles.safeHeader}>
       <View style={styles.row}>
         {onBack ? (
           <Pressable
@@ -69,6 +66,7 @@ const styles = StyleSheet.create({
   safeHeader: {
     width: "100%",
     backgroundColor: colors.background,
+    paddingTop: spacing.sm,
   },
   row: {
     minHeight: 56,

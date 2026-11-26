@@ -304,7 +304,8 @@ test("Home retains the requested section order and only passes eligible events t
   }).default();
   assert.deepEqual(screen.props.children.map((item) => item.type), ["HomeIconBar", "HomeHero", "BeaconSpotlight", "HomePanelGrid", "Text"]);
   assert.equal(screen.props.scrollable, true);
-  assert.deepEqual(screen.props.edges, ["top", "left", "right", "bottom"]);
+  assert.deepEqual(screen.props.edges, ["left", "right", "bottom"]);
+  assert.equal(screen.props.contentContainerStyle.paddingTop, spacing.spacing.sm);
   assert.equal(screen.props.children[0].props.alertCount, 0);
   assert.equal(screen.props.children[3].props.alertCount, 0);
   assert.deepEqual(screen.props.children[2].props.events.map((event) => event.id), ["eligible"]);

@@ -48,7 +48,7 @@ export default function FollowingScreen() {
   };
 
   return (
-    <Screen edges={["top", "left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
+    <Screen edges={["left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
       <ScreenHeader title="Following" onBack={() => goBackOrReplace("/my-raveorb")} />
       {error ? (
         <View style={styles.message}>
