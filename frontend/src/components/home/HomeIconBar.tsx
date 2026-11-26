@@ -66,5 +66,5 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   badgeText: { color: colors.background, fontSize: 10, lineHeight: 14, fontWeight: "800" },
-  pressed: { opacity: theme.pressed.opacity },
+  pressed: { opacity: theme.pressed.opacity, transform: [{ scale: theme.pressed.scale }] },
 });

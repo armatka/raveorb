@@ -39,7 +39,7 @@ const base = {
 const rn = { Pressable: "Pressable", Text: "Text", View: "View", StyleSheet: { create: (styles) => styles } };
 const icon = { Ionicons: "Ionicons" };
 
-test("home hero sizes and centers the logo, preserves links and CTAs, and routes notices", () => {
+test("home hero sizes and centers the logo, preserves CTAs, and routes notices", () => {
   const paths = [];
   const { HomeHero } = load("components/home/HomeHero.tsx", {
     ...base,
@@ -96,6 +96,7 @@ test("home icon bar preserves profile and artist-alert routes with accessible 44
   const buttonStyle = buttons[0].props.style({ pressed: false })[0];
   assert.equal(buttonStyle.width, theme.theme.touchTarget);
   assert.equal(buttonStyle.height, theme.theme.touchTarget);
+  assert.deepEqual(buttons[0].props.style({ pressed: true })[1].transform, [{ scale: theme.theme.pressed.scale }]);
   assert.equal(find(buttons[1], (element) => element.type === "Text")[0].props.children, "7");
   buttons.forEach((button) => button.props.onPress());
   assert.deepEqual(paths, ["/my-raveorb", "/artist-alerts"]);
@@ -182,6 +183,31 @@ test("coming-soon panel is disabled and identifies itself to accessibility", () 
   assert.match(panel.props.accessibilityLabel, /coming soon/);
   const subtitle = find(panel, (element) => element.type === "Text" && element.props.children === "Meet your people.")[0];
   assert.equal(subtitle.props.numberOfLines, 2);
+});
+
+test("home panels and CTAs share scale and opacity press feedback", () => {
+  const { HomePanel } = load("components/home/HomePanel.tsx", {
+    ...base, "react-native": rn, "@expo/vector-icons": icon,
+  });
+  const panel = HomePanel({
+    title: "Find Your Night", subtitle: "Find an event.", icon: "compass-outline",
+    accent: colors.secondary, testID: "home-panel-discover", onPress() {},
+  });
+  const pressedPanel = panel.props.style({ pressed: true });
+  const panelFeedback = pressedPanel[pressedPanel.length - 1];
+  assert.equal(panelFeedback.opacity, theme.theme.pressed.opacity);
+  assert.deepEqual(panelFeedback.transform, [{ scale: theme.theme.pressed.scale }]);
+
+  const { HomeButton } = load("components/home/HomeButton.tsx", {
+    "react-native": rn,
+    "../../theme/spacing": spacing,
+    "../../theme/theme": theme,
+  });
+  const button = HomeButton({ label: "Find events", onPress() {} });
+  const pressedButton = button.props.style({ pressed: true });
+  const buttonFeedback = pressedButton[pressedButton.length - 1];
+  assert.equal(buttonFeedback.opacity, theme.theme.pressed.opacity);
+  assert.deepEqual(buttonFeedback.transform, [{ scale: theme.theme.pressed.scale }]);
 });
 
 function spotlight({ reduceMotion = true, focused = true } = {}) {
@@ -277,6 +303,8 @@ test("Home retains the requested section order and only passes eligible events t
     "../theme/colors": colors, "../theme/spacing": spacing,
   }).default();
   assert.deepEqual(screen.props.children.map((item) => item.type), ["HomeIconBar", "HomeHero", "BeaconSpotlight", "HomePanelGrid", "Text"]);
+  assert.equal(screen.props.scrollable, true);
+  assert.deepEqual(screen.props.edges, ["top", "left", "right", "bottom"]);
   assert.equal(screen.props.children[0].props.alertCount, 0);
   assert.equal(screen.props.children[3].props.alertCount, 0);
   assert.deepEqual(screen.props.children[2].props.events.map((event) => event.id), ["eligible"]);
