@@ -28,7 +28,7 @@ function renderScreen(available, dev, options = {}) {
       useCallback: (callback) => callback,
       useState: (initial) => {
         const index = stateIndex++;
-        return [index === 0 ? event : index === 1 ? options.status ?? null : typeof initial === "boolean" ? false : initial, () => {}];
+        return [index === 0 ? event : index === 1 ? options.status ?? null : index === 13 ? options.festivalDays ?? [] : typeof initial === "boolean" ? false : initial, () => {}];
       },
     };
     if (name === "expo-router") return { router: {}, useFocusEffect() {}, useLocalSearchParams: () => ({ id: "event" }) };
@@ -44,7 +44,7 @@ function renderScreen(available, dev, options = {}) {
     if (name === "../lib/eventFormatting") return {
       formatEventDate: () => "", formatEventPrice: () => "", formatEventSchedule: () => "",
     };
-    if (name === "../lib/beacon") return { isBeaconWindow: () => options.inWindow ?? false };
+    if (name === "../lib/beacon") return { isBeaconWindow: (item) => options.windowDates ? options.windowDates.includes(item.date) : options.inWindow ?? false };
     if (name === "../lib/beaconDevOverrides") return { useBeaconDevOverrides() {} };
     if (name === "../services/calendarService") return { calendarService: { isAvailable: () => available } };
     if (name === "../theme/colors") return { colors: {} };
@@ -88,6 +88,13 @@ test("Beacon entry appears only for Going events inside the window", () => {
   assert.equal(entry(renderScreen(false, false, { status: "going", inWindow: true })).length, 1);
   assert.equal(entry(renderScreen(false, false, { status: "going", inWindow: false })).length, 0);
   assert.equal(entry(renderScreen(false, false, { status: "interested", inWindow: true })).length, 0);
+});
+
+test("Beacon can open during later saved festival days", () => {
+  const entry = findElements(renderScreen(false, false, {
+    status: "going", festivalDays: ["2030-06-07", "2030-06-08"], windowDates: ["2030-06-08"],
+  }), (element) => element.props?.children === "Beacon");
+  assert.equal(entry.length, 1);
 });
 
 test("available calendar shows the actionable button in a production build", () => {

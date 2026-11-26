@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { SetTime } from "./beacon";
 
-export type BeaconDetails = { sets: SetTime[]; meetingSpot: string };
+export type BeaconDetails = { sets: SetTime[]; meetingSpot: string; setsEditedManually?: boolean };
 // Keep the legacy key so existing set times and meeting spots remain available.
 const prefix = "raveorb.night-of.v1.";
 const queues = new Map<string, Promise<void>>();
@@ -16,10 +16,11 @@ export const beaconStorage = {
     try { data = JSON.parse(value); } catch { throw new Error("Beacon details could not be read."); }
     if (!data || typeof data !== "object" || !("sets" in data) || !Array.isArray(data.sets)
       || !data.sets.every((set: unknown) => set && typeof set === "object" && "artist" in set && typeof set.artist === "string" && "time" in set && typeof set.time === "string")
-      || !("meetingSpot" in data) || typeof data.meetingSpot !== "string") {
+      || !("meetingSpot" in data) || typeof data.meetingSpot !== "string"
+      || ("setsEditedManually" in data && typeof data.setsEditedManually !== "boolean")) {
       throw new Error("Beacon details contain unsupported records.");
     }
-    return { sets: data.sets, meetingSpot: data.meetingSpot };
+    return { sets: data.sets, meetingSpot: data.meetingSpot, ...("setsEditedManually" in data ? { setsEditedManually: data.setsEditedManually as boolean } : {}) };
   },
   async set(eventId: string, details: BeaconDetails): Promise<void> {
     const key = prefix + eventId;

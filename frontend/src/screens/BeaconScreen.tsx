@@ -10,6 +10,8 @@ import { formatEventSchedule } from "../lib/eventFormatting";
 import { buildPlanMessage, isAfterEvent, nightPrefill } from "../lib/beacon";
 import { useBeaconDevOverrides } from "../lib/beaconDevOverrides";
 import { beaconStorage, type BeaconDetails } from "../lib/beaconStorage";
+import { beaconSetsFromPlan, synchronizeBeaconSets, type FestivalPlan } from "../lib/festivalPlanner";
+import { festivalPlannerStorage } from "../lib/festivalPlannerStorage";
 import { goBackOrReplace } from "../lib/navigation";
 import { showAlert } from "../lib/showAlert";
 import { eventsRepository } from "../services/eventsRepository";
@@ -36,6 +38,7 @@ export default function BeaconScreen() {
   const [homeBy, setHomeBy] = useState("");
   const [sharing, setSharing] = useState(false);
   const [now, setNow] = useState(() => new Date());
+  const [festivalPlan, setFestivalPlan] = useState<FestivalPlan | null>(null);
 
   useFocusEffect(useCallback(() => {
     let active = true;
@@ -47,15 +50,18 @@ export default function BeaconScreen() {
       setLoadError("Event not found.");
       setLoading(false);
     } else {
-      Promise.all([eventsRepository.getEvent(id), eventStatusStorage.get(id), beaconStorage.get(id)])
-        .then(([loadedEvent, status, saved]) => {
+      Promise.all([eventsRepository.getEvent(id), eventStatusStorage.get(id), beaconStorage.get(id), festivalPlannerStorage.get(id)])
+        .then(([loadedEvent, status, saved, plan]) => {
           if (!active) return;
           if (!loadedEvent || status !== "going") {
             setEvent(null);
             setLoadError("Beacon is available for events marked Going.");
             return;
           }
-          const initial = saved ?? { sets: loadedEvent.artists.map((artist) => ({ artist, time: "" })), meetingSpot: "" };
+          const fallbackSets = loadedEvent.artists.map((artist) => ({ artist, time: "" }));
+          const base = saved ?? { sets: fallbackSets, meetingSpot: "", setsEditedManually: false };
+          const initial = synchronizeBeaconSets(base, plan, fallbackSets).details;
+          setFestivalPlan(plan);
           detailsRef.current = initial;
           setDetails(initial);
           setSaveError(false);
@@ -146,18 +152,21 @@ export default function BeaconScreen() {
 
           <View style={styles.section}>
             <Text style={styles.heading}>Set times</Text>
+            {festivalPlan && synchronizeBeaconSets(details, festivalPlan).canUsePlan ? (
+              <Button title="Use my festival plan" onPress={() => save({ ...detailsRef.current, sets: beaconSetsFromPlan(festivalPlan), setsEditedManually: false })} />
+            ) : null}
             {details.sets.map((set, index) => (
               <View key={index} style={styles.setRow}>
                 <TextInput style={[styles.input, styles.artist]} value={set.artist} placeholder="Artist" placeholderTextColor="#aaa" accessibilityLabel={`Artist ${index + 1}`}
-                  onChangeText={(artist) => save({ ...detailsRef.current, sets: detailsRef.current.sets.map((item, i) => i === index ? { ...item, artist } : item) })} />
+                  onChangeText={(artist) => save({ ...detailsRef.current, setsEditedManually: true, sets: detailsRef.current.sets.map((item, i) => i === index ? { ...item, artist } : item) })} />
                 <TextInput style={[styles.input, styles.time]} value={set.time} placeholder="Time" placeholderTextColor="#aaa" accessibilityLabel={`Set time ${index + 1}`}
-                  onChangeText={(time) => save({ ...detailsRef.current, sets: detailsRef.current.sets.map((item, i) => i === index ? { ...item, time } : item) })} />
-                <Pressable onPress={() => save({ ...detailsRef.current, sets: detailsRef.current.sets.filter((_, i) => i !== index) })} accessibilityRole="button" accessibilityLabel={`Remove set ${index + 1}`} style={styles.remove}>
+                  onChangeText={(time) => save({ ...detailsRef.current, setsEditedManually: true, sets: detailsRef.current.sets.map((item, i) => i === index ? { ...item, time } : item) })} />
+                <Pressable onPress={() => save({ ...detailsRef.current, setsEditedManually: true, sets: detailsRef.current.sets.filter((_, i) => i !== index) })} accessibilityRole="button" accessibilityLabel={`Remove set ${index + 1}`} style={styles.remove}>
                   <Text style={styles.buttonText}>×</Text>
                 </Pressable>
               </View>
             ))}
-            <Button title="Add set" onPress={() => save({ ...detailsRef.current, sets: [...detailsRef.current.sets, { artist: "", time: "" }] })} />
+            <Button title="Add set" onPress={() => save({ ...detailsRef.current, setsEditedManually: true, sets: [...detailsRef.current.sets, { artist: "", time: "" }] })} />
           </View>
           <View style={styles.section}>
             <Text style={styles.heading}>Meeting spot</Text>
@@ -173,9 +182,12 @@ export default function BeaconScreen() {
             <Button title="Share plan with current location" disabled={sharing} onPress={() => { void sharePlan(true); }} />
             <Button title="I'm home" onPress={() => { void shareHome(); }} />
           </View>
-          {isAfterEvent(event, now) ? (
+          {isAfterEvent(festivalPlan?.days.length ? { ...event, date: festivalPlan.days[festivalPlan.days.length - 1], dateTime: undefined } : event, now) ? (
             <View style={styles.section}>
-              <Button title="Log this Night" onPress={() => router.push({ pathname: "/night/new", params: nightPrefill(event, detailsRef.current.sets) })} />
+              <Button title="Log this Night" onPress={() => {
+                const starred = festivalPlan ? beaconSetsFromPlan(festivalPlan) : [];
+                router.push({ pathname: "/night/new", params: nightPrefill(event, starred.length ? starred : detailsRef.current.sets) });
+              }} />
             </View>
           ) : !event.endTime?.trim() ? <Text style={styles.caption}>If no end time is listed, logging becomes available five hours after the start.</Text> : null}
         </>

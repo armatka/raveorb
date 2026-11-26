@@ -11,6 +11,7 @@ RaveOrb is an Expo app for discovering electronic music events and keeping a per
 - Stats are computed from local Nights and group spending by currency without conversion. Journal data is device-local and is not synced or backed up by the app.
 - Orbit unlocks after three Nights in a year. Its style uses up to 50 linked event lookups, and weekends are grouped by Friday using the Night's date. Spending excludes zero values because an unfilled cost is stored as zero. The share image excludes photos, notes and moments; friends and spending are opt-in. Image sharing is available on supported iOS and Android devices, including Expo Go.
 - In development builds, My RaveOrb can load eight sample 2026 Nights or remove Nights whose event name starts with `[Sample]`.
+- Festival and four-artist event details offer a device-local planner. Reopen saved plans from My RaveOrb without a network connection. Add festival dates, stages and set times; times before 06:00 belong to the night after the selected festival day. Star sets to see clashes and free time, or view the stage grid. Beacon follows the starred plan until its sets are edited; the journal prefill uses starred artists. Development tools can load or remove a separate sample festival.
 
 ## Prerequisites
 

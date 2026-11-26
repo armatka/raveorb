@@ -16,6 +16,9 @@ import { calculateNightStats, calculateProfileStats } from "../lib/nightStats";
 import { nightsStorage } from "../lib/nightsStorage";
 import { setBeaconDevOverride, useBeaconDevOverrides } from "../lib/beaconDevOverrides";
 import { loadSampleNights, removeSampleNights } from "../lib/sampleNights";
+import { loadSampleFestival, removeSampleFestival } from "../lib/sampleFestival";
+import { festivalPlannerStorage } from "../lib/festivalPlannerStorage";
+import type { FestivalPlan } from "../lib/festivalPlanner";
 import { showAlert } from "../lib/showAlert";
 import { eventsRepository } from "../services/eventsRepository";
 import { colors } from "../theme/colors";
@@ -35,6 +38,8 @@ export default function MyRaveOrbScreen() {
   const [sampleBusy, setSampleBusy] = useState(false);
   const sampleBusyRef = useRef(false);
   const beaconOverrides = useBeaconDevOverrides();
+  const [festivalPlans, setFestivalPlans] = useState<FestivalPlan[]>([]);
+  const [festivalPlansError, setFestivalPlansError] = useState(false);
 
   useFocusEffect(useCallback(() => {
     let active = true;
@@ -43,6 +48,9 @@ export default function MyRaveOrbScreen() {
     setEvents([]);
     setEventsError(false);
     setEventsLoading(false);
+    festivalPlannerStorage.list().then((items) => {
+      if (active) { setFestivalPlans(items); setFestivalPlansError(false); }
+    }).catch(() => { if (active) setFestivalPlansError(true); });
     nightsStorage.list().then((items) => {
       if (!active) return;
       setNights(items);
@@ -80,6 +88,25 @@ export default function MyRaveOrbScreen() {
       setSampleBusy(false);
     }
   };
+  const runFestivalAction = async (action: "load" | "remove") => {
+    if (sampleBusyRef.current) return;
+    sampleBusyRef.current = true;
+    setSampleBusy(true);
+    try {
+      if (action === "load") {
+        const event = await loadSampleFestival();
+        router.push({ pathname: "/event/[id]", params: { id: event.id } });
+      } else {
+        await removeSampleFestival();
+      }
+    } catch {
+      showAlert("Sample festival could not be updated", "Please try again.");
+    } finally {
+      retry();
+      sampleBusyRef.current = false;
+      setSampleBusy(false);
+    }
+  };
 
   return (
     <Screen edges={["left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
@@ -89,6 +116,12 @@ export default function MyRaveOrbScreen() {
       <InfoRow label="Preferences" value="Manage saved settings" onPress={() => router.push("/preferences")} accessibilityLabel="Open Preferences" />
       <InfoRow label="Following" value="Artists you follow" onPress={() => router.push("/following")} accessibilityLabel="Open Following" />
       <InfoRow label="Orbit" value="Your year in Nights" onPress={() => router.push("/orbit")} accessibilityLabel="Open Orbit" />
+      {festivalPlansError ? <InfoRow label="Festival plans unavailable" value="Retry" onPress={retry} accessibilityLabel="Retry loading festival plans" /> : festivalPlans.length ? (
+        <>
+          <Section title="FESTIVAL PLANS" />
+          {festivalPlans.map((plan) => <InfoRow key={plan.eventId} label={plan.event.title} value="Open plan" onPress={() => router.push({ pathname: "/planner/[id]", params: { id: plan.eventId } })} accessibilityLabel={`Open festival plan for ${plan.event.title}`} />)}
+        </>
+      ) : null}
       {loading ? <ActivityIndicator color={colors.primary} style={styles.loader} /> : journalError ? (
         <EmptyState title="Profile unavailable" message="Your journal could not be loaded." icon="alert-circle-outline" action={<Action label="Retry" icon="refresh" onPress={retry} />} />
       ) : nights.length === 0 ? (
@@ -170,6 +203,8 @@ export default function MyRaveOrbScreen() {
           <Text style={styles.muted}>Loading samples also adds a fictional Going event starting in about two hours.</Text>
           <Action label="Load sample Nights" icon="add" onPress={() => runSampleAction("load")} disabled={sampleBusy || loading} />
           <Action label="Remove sample Nights" icon="trash-outline" onPress={() => runSampleAction("remove")} disabled={sampleBusy || loading} />
+          <Action label="Load sample festival" icon="add" onPress={() => runFestivalAction("load")} disabled={sampleBusy || loading} />
+          <Action label="Remove sample festival" icon="trash-outline" onPress={() => runFestivalAction("remove")} disabled={sampleBusy || loading} />
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Force Beacon window</Text>
             <Switch accessibilityLabel="Force Beacon window" value={beaconOverrides.forceWindow} onValueChange={(value) => setBeaconDevOverride("forceWindow", value)} />

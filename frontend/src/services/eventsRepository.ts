@@ -3,6 +3,8 @@ import type { EventEntry, EventCurrency, EventStatus, EventType, RaveOrbCategory
 import { raveOrbCategories } from "../types/event";
 import type { Venue } from "../types/venue";
 import { SAMPLE_EVENT_ID_PREFIX, sampleEventStorage } from "../lib/sampleEvent";
+import { SAMPLE_FESTIVAL_ID, sampleFestivalStorage } from "../lib/sampleFestival";
+import { festivalPlannerStorage } from "../lib/festivalPlannerStorage";
 import { getEventsApiBaseUrl, hasEventsApi, readPageHeader, requestEventsApi, serializeEventsQuery, type EventsApiQuery } from "./eventsApi";
 
 export type EventQueryFilters = {
@@ -291,6 +293,10 @@ export const eventsRepository = {
   },
 
   async getEvent(id: string): Promise<EventEntry | null> {
+    if (id === SAMPLE_FESTIVAL_ID) {
+      const event = await sampleFestivalStorage.get();
+      return event === null ? null : parseEvent(event);
+    }
     if (id.startsWith(SAMPLE_EVENT_ID_PREFIX)) {
       const event = await sampleEventStorage.get();
       return event?.id === id ? parseEvent(event) : null;
@@ -301,6 +307,10 @@ export const eventsRepository = {
       return parseEvent(payload);
     } catch (error) {
       if (isNotFound(error)) return null;
+      if (error instanceof Error && (error.message.startsWith("The event service could not be reached.") || error.message.startsWith("The event service timed out."))) {
+        const plan = await festivalPlannerStorage.get(id);
+        if (plan) return parseEvent(plan.event);
+      }
       throw error;
     }
   },

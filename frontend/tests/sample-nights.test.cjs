@@ -47,6 +47,7 @@ function journal() {
   const { eventsRepository } = load("services/eventsRepository.ts", {
     "../data/mockData": { mockEvents: [], mockVenues: [] }, "../types/event": { raveOrbCategories: [] },
     "../lib/sampleEvent": sampleEvent, "./eventsApi": eventsApi,
+    "../lib/sampleFestival": {}, "../lib/festivalPlannerStorage": {},
   });
   return { nightsStorage, eventStatusStorage, beaconStorage, sampleEvent, eventsRepository, ...sample };
 }
@@ -148,7 +149,7 @@ function renderScreen(dev, actions = {}) {
     "../components/EmptyState": { EmptyState: component }, "../components/Screen": { Screen: component }, "../components/ScreenHeader": { ScreenHeader: component },
     "../lib/eventFormatting": {}, "../lib/discoveryLocation": {}, "../lib/formatCurrency": {}, "../lib/navigation": {},
     "../lib/nightStats": { calculateProfileStats: () => ({ years: [], stats: {} }), calculateNightStats: () => ({}) },
-    "../lib/nightsStorage": {}, "../lib/sampleNights": actions, "../lib/showAlert": { showAlert: actions.showAlert },
+    "../lib/nightsStorage": {}, "../lib/sampleNights": actions, "../lib/sampleFestival": actions, "../lib/festivalPlannerStorage": {}, "../lib/showAlert": { showAlert: actions.showAlert },
     "../lib/beaconDevOverrides": {
       useBeaconDevOverrides: () => ({ forceWindow: false, forceAfterEvent: false }),
       setBeaconDevOverride: actions.setBeaconDevOverride,
@@ -172,8 +173,8 @@ function findElements(element, predicate) {
 }
 
 test("sample controls are present in development even for an empty journal and absent in production", () => {
-  const buttons = (screen) => findElements(screen, (element) => ["Load sample Nights", "Remove sample Nights"].includes(element.props?.label));
-  assert.deepEqual(buttons(renderScreen(true)).map((element) => element.props.label), ["Load sample Nights", "Remove sample Nights"]);
+  const buttons = (screen) => findElements(screen, (element) => ["Load sample Nights", "Remove sample Nights", "Load sample festival", "Remove sample festival"].includes(element.props?.label));
+  assert.deepEqual(buttons(renderScreen(true)).map((element) => element.props.label), ["Load sample Nights", "Remove sample Nights", "Load sample festival", "Remove sample festival"]);
   assert.equal(buttons(renderScreen(false)).length, 0);
 });
 

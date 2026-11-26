@@ -23,6 +23,7 @@ import { formatEventDate, formatEventPrice, formatEventSchedule } from "../lib/e
 import { nightsStorage } from "../lib/nightsStorage";
 import { isBeaconWindow } from "../lib/beacon";
 import { useBeaconDevOverrides } from "../lib/beaconDevOverrides";
+import { festivalPlannerStorage } from "../lib/festivalPlannerStorage";
 import { goBackOrReplace } from "../lib/navigation";
 import { showAlert } from "../lib/showAlert";
 import { calendarService } from "../services/calendarService";
@@ -58,6 +59,8 @@ export default function EventDetailScreen() {
   const [calendarEventId, setCalendarEventId] = useState<string | null>(null);
   const [calendarBusy, setCalendarBusy] = useState(false);
   const [now, setNow] = useState(() => new Date());
+  const [festivalDays, setFestivalDays] = useState<string[]>([]);
+  const [festivalPlanError, setFestivalPlanError] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -76,6 +79,8 @@ export default function EventDetailScreen() {
         setStatusError(false);
         setNightError(false);
         setCalendarEventId(null);
+        setFestivalDays([]);
+        setFestivalPlanError(false);
         return () => {
           isCurrent = false;
           clearInterval(timer);
@@ -92,7 +97,8 @@ export default function EventDetailScreen() {
         eventStatusStorage.get(id),
         nightsStorage.getBySourceEventId(id),
         calendarService.resolveLinkedEvent(id),
-      ]).then(([eventResult, statusResult, linkedNightResult, calendarResult]) => {
+        festivalPlannerStorage.get(id),
+      ]).then(([eventResult, statusResult, linkedNightResult, calendarResult, planResult]) => {
         if (!isCurrent) return;
 
         if (eventResult.status === "fulfilled") {
@@ -107,6 +113,8 @@ export default function EventDetailScreen() {
         setStatusError(statusResult.status === "rejected");
         setNightError(linkedNightResult.status === "rejected");
         setCalendarEventId(calendarResult.status === "fulfilled" ? calendarResult.value : null);
+        setFestivalDays(planResult.status === "fulfilled" ? planResult.value?.days ?? [] : []);
+        setFestivalPlanError(planResult.status === "rejected");
       }).finally(() => {
         if (isCurrent) {
           setLoadingEvent(false);
@@ -278,7 +286,13 @@ export default function EventDetailScreen() {
             })}
           </View>
         )}
-        {status === "going" && !loadingStatus && !statusError && isBeaconWindow(event, now) ? (
+        {event.isFestival || event.artists.length >= 4 ? (
+          <Pressable style={styles.secondaryButton} onPress={() => router.push({ pathname: "/planner/[id]", params: { id: event.id } })} accessibilityRole="button">
+            <Text style={styles.secondaryButtonText}>Plan my day</Text>
+          </Pressable>
+        ) : null}
+        {festivalPlanError ? <Pressable style={styles.secondaryButton} onPress={retryLoading} accessibilityRole="button"><Text style={styles.secondaryButtonText}>Festival plan unavailable. Retry</Text></Pressable> : null}
+        {status === "going" && !loadingStatus && !statusError && (isBeaconWindow(event, now) || festivalDays.some((day) => isBeaconWindow({ ...event, date: day, dateTime: undefined }, now))) ? (
           <Pressable
             style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
             onPress={() => router.push({ pathname: "/beacon/[id]", params: { id: event.id } })}
