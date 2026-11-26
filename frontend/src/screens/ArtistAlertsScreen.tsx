@@ -33,7 +33,7 @@ export default function ArtistAlertsScreen() {
   }, []));
 
   return (
-    <Screen edges={["top", "left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
+    <Screen edges={["left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
       <ScreenHeader title="Artists near you" onBack={() => goBackOrReplace("/(tabs)")} />
       {error ? <Text style={styles.error}>Artist alerts could not be loaded.</Text> : null}
       {loading ? <ActivityIndicator color={colors.primary} /> : alerts.length ? alerts.map((alert) => (

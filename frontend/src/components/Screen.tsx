@@ -14,7 +14,7 @@ import { colors } from "../theme/colors";
 
 type ScreenProps = {
   children: ReactNode;
-  edges?: Edge[];
+  edges?: Exclude<Edge, "top">[];
   scrollable?: boolean;
   style?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
@@ -24,16 +24,18 @@ type ScreenProps = {
 
 export function Screen({
   children,
-  edges = ["top", "bottom"],
+  edges = ["bottom"],
   scrollable = false,
   style,
   contentContainerStyle,
   showsVerticalScrollIndicator = false,
   keyboardShouldPersistTaps = "handled",
 }: ScreenProps) {
+  const safeEdges: Edge[] = ["top", ...edges];
+
   if (!scrollable) {
     return (
-      <SafeAreaView edges={edges} style={[styles.root, style]}>
+      <SafeAreaView edges={safeEdges} style={[styles.root, style]}>
         {children}
       </SafeAreaView>
     );
@@ -60,7 +62,7 @@ export function Screen({
   );
 
   return (
-    <SafeAreaView edges={edges} style={[styles.root, style]}>
+    <SafeAreaView edges={safeEdges} style={[styles.root, style]}>
       {Platform.OS === "android" ? (
         <KeyboardAvoidingView behavior="padding" style={styles.scroll}>
           {scroll}

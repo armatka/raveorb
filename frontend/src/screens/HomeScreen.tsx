@@ -61,7 +61,7 @@ export default function HomeScreen() {
   }, [retry]));
 
   return (
-    <Screen edges={["top", "left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
+    <Screen edges={["left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
       <HomeIconBar alertCount={alertCount} />
       <HomeHero changedCount={changedCount} updatesError={updatesError} />
       <BeaconSpotlight events={goingEvents.filter((event) => isBeaconWindow(event, now))} loadError={loadError} onRetry={() => setRetry((value) => value + 1)} />
@@ -72,6 +72,6 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { width: "100%", maxWidth: 800, alignSelf: "center", paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl * 2, gap: spacing.xl },
+  content: { width: "100%", maxWidth: 800, alignSelf: "center", paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xxl * 2, gap: spacing.xl },
   closing: { color: colors.textSecondary, fontSize: 16, lineHeight: 24, textAlign: "center", paddingVertical: spacing.xl },
 });

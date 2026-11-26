@@ -210,7 +210,7 @@ export default function MyNightsScreen() {
   }
 
   return (
-    <Screen edges={["top", "left", "right"]} style={styles.container}>
+    <Screen edges={["left", "right"]} style={styles.container}>
       <SectionList
         sections={error ? [] : sections}
         keyExtractor={(night) => night.id}

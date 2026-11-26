@@ -92,7 +92,7 @@ export default function PreferencesScreen() {
   };
 
   return (
-    <Screen edges={["top", "left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
+    <Screen edges={["left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
       <ScreenHeader title="Preferences" onBack={() => goBackOrReplace("/(tabs)")} />
       {loadError ? (
         <View style={styles.message}>

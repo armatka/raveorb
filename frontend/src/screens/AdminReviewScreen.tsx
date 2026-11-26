@@ -78,7 +78,7 @@ export default function AdminReviewScreen() {
   };
 
   return (
-    <Screen edges={["top", "left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
+    <Screen edges={["left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
       <ScreenHeader title="Event review" onBack={() => router.back()} />
       {!adminToken ? (
         <View style={styles.unlock}>
