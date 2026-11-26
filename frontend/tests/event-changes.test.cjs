@@ -67,6 +67,20 @@ test("migrates legacy statuses without losing them and backfills observed snapsh
   assert.equal(JSON.parse(stored).version, 2);
 });
 
+test("backfill enriches attended snapshots without acknowledging schedule changes", async () => {
+  stored = JSON.stringify({ version: 2, cursor: 0, entries: {
+    legacy: { status: "attended", snapshot: changes.snapshotEvent({ ...base, id: "legacy" }) },
+  } });
+  const parsed = JSON.parse(stored);
+  delete parsed.entries.legacy.snapshot.sourceEventId;
+  stored = JSON.stringify(parsed);
+  await eventStatusStorage.backfillSnapshots([{ ...base, id: "legacy", sourceEventId: "provider-id", artists: ["Artist"], date: "2030-07-01" }]);
+  const { snapshot } = (await eventStatusStorage.listTracked()).legacy;
+  assert.equal(snapshot.sourceEventId, "provider-id");
+  assert.deepEqual(snapshot.artists, ["Artist"]);
+  assert.equal(snapshot.date, "2030-06-07");
+});
+
 test("throttles refreshes, rotates the 25-event cap and excludes past events", async () => {
   for (let index = 0; index < 30; index++) {
     await eventStatusStorage.set(`event-${String(index).padStart(2, "0")}`, "going", { ...base, id: `event-${index}` });
@@ -80,6 +94,12 @@ test("throttles refreshes, rotates the 25-event cap and excludes past events", a
   const second = await eventStatusStorage.reserveRefresh(new Date(now.getTime() + 6 * 3600000));
   assert.equal(second.length, 25);
   assert.ok(second.includes("event-29"));
+});
+
+test("refresh skips events already attempted by calendar backfill", async () => {
+  await eventStatusStorage.set("first", "going", { ...base, id: "first" });
+  await eventStatusStorage.set("second", "going", { ...base, id: "second" });
+  assert.deepEqual(await eventStatusStorage.reserveRefresh(new Date("2030-06-07T16:00:00Z"), new Set(["first"])), ["second"]);
 });
 
 test("dismissing one change keeps unrelated changes pending", async () => {

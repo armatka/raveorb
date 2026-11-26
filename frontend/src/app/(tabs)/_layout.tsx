@@ -27,22 +27,22 @@ export default function TabsLayout() {
               : route.name === "nights"
                 ? "book"
               : route.name === "events"
-                ? "calendar"
-                : route.name === "venues"
-                  ? "location"
+                ? "compass"
+                : route.name === "calendar"
+                  ? "calendar"
                   : "bar-chart";
 
           const resolvedColor = typeof color === "string" ? color : colors.text;
           const resolvedSize = typeof size === "number" ? size : 24;
 
-          return <Ionicons name={iconName as any} size={resolvedSize} color={resolvedColor} />;
+          return <Ionicons name={iconName} size={resolvedSize} color={resolvedColor} />;
         },
       })}
     >
       <Tabs.Screen name="index" options={{ title: "Home" }} />
       <Tabs.Screen name="nights" options={{ title: "My Nights" }} />
       <Tabs.Screen name="events" options={{ title: "Events" }} />
-      <Tabs.Screen name="venues" options={{ title: "Venues" }} />
+      <Tabs.Screen name="calendar" options={{ title: "Calendar" }} />
       <Tabs.Screen name="stats" options={{ title: "Stats" }} />
     </Tabs>
   );

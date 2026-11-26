@@ -28,7 +28,9 @@ function renderScreen(available, dev, options = {}) {
       useCallback: (callback) => callback,
       useState: (initial) => {
         const index = stateIndex++;
-        return [index === 0 ? event : index === 1 ? options.status ?? null : index === 13 ? options.festivalDays ?? [] : typeof initial === "boolean" ? false : initial, () => {}];
+        return [index === 0 ? options.offline ? null : event : index === 1 ? options.snapshot ?? null
+          : index === 2 ? options.status ?? null : index === 7 ? options.offline ? "Offline" : null
+            : index === 14 ? options.festivalDays ?? [] : typeof initial === "boolean" ? false : initial, () => {}];
       },
     };
     if (name === "expo-router") return { router: {}, useFocusEffect() {}, useLocalSearchParams: () => ({ id: "event" }) };
@@ -103,4 +105,13 @@ test("available calendar shows the actionable button in a production build", () 
   assert.equal(buttons.length, 1);
   assert.equal(buttons[0].props.disabled, false);
   assert.equal(typeof buttons[0].props.onPress, "function");
+});
+
+test("event details show saved information when offline without inventing full event data", () => {
+  const screen = renderScreen(false, false, { offline: true, snapshot: {
+    title: "Saved night", date: "2030-06-07", startTime: "23:00", venueName: "Venue", city: "Toronto",
+  } });
+  assert.equal(findElements(screen, (element) => element.props?.children === "Saved night").length, 1);
+  assert.equal(findElements(screen, (element) => element.props?.children === "Showing saved details. Full event details are unavailable.").length, 1);
+  assert.equal(findElements(screen, (element) => element.props?.children === "Retry").length, 1);
 });

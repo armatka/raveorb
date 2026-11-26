@@ -2,12 +2,14 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { EmptyState } from "../../components/EmptyState";
-import { Screen } from "../../components/Screen";
-import { eventsRepository } from "../../services/eventsRepository";
-import { colors } from "../../theme/colors";
-import { spacing } from "../../theme/spacing";
-import type { Venue } from "../../types/venue";
+import { EmptyState } from "../components/EmptyState";
+import { Screen } from "../components/Screen";
+import { ScreenHeader } from "../components/ScreenHeader";
+import { goBackOrReplace } from "../lib/navigation";
+import { eventsRepository } from "../services/eventsRepository";
+import { colors } from "../theme/colors";
+import { spacing } from "../theme/spacing";
+import type { Venue } from "../types/venue";
 
 export default function VenuesScreen() {
   const [venues, setVenues] = useState<Venue[]>([]);
@@ -36,7 +38,8 @@ export default function VenuesScreen() {
   );
 
   return (
-    <Screen edges={["left", "right"]} scrollable style={styles.container} contentContainerStyle={styles.content}>
+    <Screen edges={["left", "right", "bottom"]} scrollable style={styles.container} contentContainerStyle={styles.content}>
+      <ScreenHeader onBack={() => goBackOrReplace("/(tabs)")} />
       <Text style={styles.title}>Favorite venues</Text>
 
       {loading ? <ActivityIndicator color={colors.primary} style={styles.loader} /> : null}

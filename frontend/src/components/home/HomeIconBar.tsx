@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import Svg, { Circle, Ellipse } from "react-native-svg";
 
 import { homeContent } from "../../constants/homeContent";
 import { colors } from "../../theme/colors";
@@ -21,7 +22,22 @@ export function HomeIconBar({ alertCount }: { alertCount: number }) {
         style={({ pressed }) => [styles.button, pressed && styles.pressed]}
         testID="home-profile-button"
       >
-        <Ionicons name="person-circle-outline" size={24} color={colors.secondary} />
+        <Svg width={25} height={25} viewBox="0 0 25 25">
+          <Circle cx="12.5" cy="12.5" r="7" fill="none" stroke={colors.secondary} strokeWidth="1.5" />
+          <Ellipse cx="12.5" cy="12.5" rx="11" ry="5" rotation="-28" origin="12.5, 12.5" fill="none" stroke={colors.secondary} strokeWidth="1.5" />
+          <Circle cx="10" cy="10" r="1.5" fill={colors.secondary} fillOpacity={0.4} />
+        </Svg>
+        <Text style={styles.label} numberOfLines={1}>{hero.profile}</Text>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={hero.venues}
+        onPress={() => router.push("/venues")}
+        style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+        testID="home-venues-button"
+      >
+        <Ionicons name="location" size={22} color={colors.secondary} />
+        <Text style={styles.label} numberOfLines={1}>Venues</Text>
       </Pressable>
       <Pressable
         accessibilityRole="button"
@@ -30,7 +46,11 @@ export function HomeIconBar({ alertCount }: { alertCount: number }) {
         style={({ pressed }) => [styles.button, pressed && styles.pressed]}
         testID="home-artist-alerts-button"
       >
-        <Ionicons name="notifications-outline" size={24} color={colors.secondary} />
+        <View style={styles.pin}>
+          <Ionicons name="location-outline" size={24} color={colors.secondary} />
+          <Ionicons name="musical-note" size={11} color={colors.secondary} style={styles.note} />
+        </View>
+        <Text style={styles.label} numberOfLines={1}>Artists</Text>
         {alertCount > 0 ? (
           <View pointerEvents="none" style={styles.badge}>
             <Text style={styles.badgeText}>{badgeLabel}</Text>
@@ -44,8 +64,8 @@ export function HomeIconBar({ alertCount }: { alertCount: number }) {
 const styles = StyleSheet.create({
   bar: { minHeight: theme.touchTarget, flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm },
   button: {
-    width: theme.touchTarget,
-    height: theme.touchTarget,
+    width: 80,
+    minHeight: theme.touchTarget + 12,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: theme.borderRadius.lg,
@@ -53,6 +73,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
+  label: { color: colors.textSecondary, fontSize: 10, lineHeight: 12 },
+  pin: { width: 24, height: 24 },
+  note: { position: "absolute", top: 5, left: 7 },
   badge: {
     position: "absolute",
     top: -4,

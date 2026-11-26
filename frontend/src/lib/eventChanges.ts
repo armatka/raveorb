@@ -8,6 +8,8 @@ export type EventSnapshot = {
   venueName: string;
   city: string;
   timezone: string;
+  sourceEventId?: string;
+  artists?: string[];
 };
 
 export type EventChangeKind = "cancelled" | "postponed" | "rescheduled" | "venue" | "sold-out" | "tickets-available";
@@ -17,6 +19,7 @@ export function snapshotEvent(event: EventEntry): EventSnapshot {
   return {
     title: event.title, status: event.status, date: event.date, startTime: event.startTime,
     venueName: event.venueName, city: event.city, timezone: event.timezone,
+    sourceEventId: event.sourceEventId?.trim() || event.id, artists: event.artists,
   };
 }
 
