@@ -25,9 +25,9 @@ function find(element, predicate) {
   return [...(predicate(element) ? [element] : []), ...find(element.props?.children, predicate)];
 }
 
-const { homeContent } = load("constants/homeContent.ts");
-const theme = load("theme/theme.ts", { "./colors": load("theme/colors.ts") });
 const colors = load("theme/colors.ts");
+const { homeContent } = load("constants/homeContent.ts", { "../theme/colors": colors });
+const theme = load("theme/theme.ts", { "./colors": load("theme/colors.ts") });
 const spacing = load("theme/spacing.ts");
 const base = {
   "../..": {},
@@ -55,34 +55,56 @@ test("hero CTAs navigate to discovery and saved events, keeping existing profile
   assert.deepEqual(paths, ["/(tabs)/events", "/event-changes", "/my-raveorb", "/artist-alerts"]);
 });
 
-test("pillars use requested order and routes, with the unavailable crew card non-tappable", () => {
+test("home panel grid contains all six panels in order and preserves their routes", () => {
   const paths = [];
-  const { PillarCard } = load("components/home/PillarCard.tsx", {
-    ...base, "react-native": rn, "@expo/vector-icons": icon,
+  const { HomePanelGrid } = load("components/home/HomePanelGrid.tsx", {
+    ...base,
+    "react-native": { ...rn, useWindowDimensions: () => ({ width: 390, fontScale: 1 }) },
     "expo-router": { router: { push: (route) => paths.push(route) } },
+    "./HomePanel": { HomePanel: "HomePanel" },
   });
-  assert.deepEqual(homeContent.pillars.map((pillar) => pillar.key), ["discover", "capture", "connect", "orbit"]);
-  const cards = homeContent.pillars.map((pillar) => PillarCard({ pillar, wide: false }));
-  assert.equal(cards[2].type, "View");
-  assert.equal(cards[2].props.onPress, undefined);
-  for (const card of cards.filter((item) => item.type === "Pressable")) {
-    assert.equal(card.props.accessibilityRole, "button");
-    assert.ok(card.props.accessibilityLabel);
-    card.props.onPress();
-  }
-  assert.deepEqual(paths, ["/(tabs)/events", "/(tabs)/nights", "/orbit"]);
+  const grid = HomePanelGrid({ alertCount: 3 });
+  const panels = find(grid, (element) => element.type === "HomePanel");
+  assert.deepEqual(panels.map((panel) => panel.props.title), [
+    "Find Your Night", "Capture the Moment", "Find Your Crew", "Your Orbit", "My RaveOrb", "Artist Alert",
+  ]);
+  assert.equal(panels[2].props.comingSoon, true);
+  assert.deepEqual(panels.map((panel) => panel.props.testID), [
+    "home-panel-discover", "home-panel-capture", "home-panel-connect",
+    "home-panel-orbit", "home-panel-profile", "home-panel-artist-alerts",
+  ]);
+  assert.equal(panels[5].props.badge, "3 new");
+  panels.forEach((panel) => panel.props.onPress?.());
+  assert.deepEqual(paths, ["/(tabs)/events", "/(tabs)/nights", "/orbit", "/my-raveorb", "/artist-alerts"]);
 });
 
-test("pillar grid adapts to viewport and font scaling", () => {
-  const render = (width, fontScale) => load("components/home/PillarGrid.tsx", {
+test("home panel grid uses two columns at 340pt effective width and one below", () => {
+  const render = (width, fontScale) => load("components/home/HomePanelGrid.tsx", {
     ...base, "react-native": { ...rn, useWindowDimensions: () => ({ width, fontScale }) },
-    "./PillarCard": { PillarCard: "PillarCard" },
-  }).PillarGrid();
-  for (const [width, scale, wide] of [[390, 1, false], [800, 1, true], [800, 2, false]]) {
-    const cards = find(render(width, scale), (element) => element.type === "PillarCard");
-    assert.equal(cards.length, 4);
-    assert.ok(cards.every((card) => card.props.wide === wide));
+    "expo-router": { router: { push() {} } },
+    "./HomePanel": { HomePanel: "HomePanel" },
+  }).HomePanelGrid({});
+  for (const [width, scale, singleColumn] of [[375, 1, false], [393, 1, false], [339, 1, true], [480, 1.5, true]]) {
+    const cards = find(render(width, scale), (element) => element.type === "HomePanel");
+    assert.equal(cards.length, 6);
+    assert.ok(cards.every((card) => card.props.singleColumn === singleColumn));
   }
+});
+
+test("coming-soon panel is disabled and identifies itself to accessibility", () => {
+  const { HomePanel } = load("components/home/HomePanel.tsx", {
+    ...base, "react-native": rn, "@expo/vector-icons": icon,
+  });
+  const panel = HomePanel({
+    title: "Find Your Crew", subtitle: "Meet your people.", icon: "people-outline",
+    accent: colors.platinum, testID: "home-panel-connect", comingSoon: true,
+  });
+  assert.equal(panel.type, "View");
+  assert.equal(panel.props.onPress, undefined);
+  assert.equal(panel.props.accessibilityState.disabled, true);
+  assert.match(panel.props.accessibilityLabel, /coming soon/);
+  const subtitle = find(panel, (element) => element.type === "Text" && element.props.children === "Meet your people.")[0];
+  assert.equal(subtitle.props.numberOfLines, 2);
 });
 
 function spotlight({ reduceMotion = true, focused = true } = {}) {
@@ -167,7 +189,7 @@ test("Home retains the requested section order and only passes eligible events t
     "react-native": rn,
     "../components/home/BeaconSpotlight": { BeaconSpotlight: "BeaconSpotlight" },
     "../components/home/HeroSection": { HeroSection: "HeroSection" },
-    "../components/home/PillarGrid": { PillarGrid: "PillarGrid" },
+    "../components/home/HomePanelGrid": { HomePanelGrid: "HomePanelGrid" },
     "../components/Screen": { Screen: "Screen" },
     "../constants/homeContent": { homeContent },
     "../lib/beacon": { isBeaconWindow: (event) => event.id === "eligible" },
@@ -176,7 +198,8 @@ test("Home retains the requested section order and only passes eligible events t
     "../services/artistAlertsService": {}, "../services/eventChangesService": {}, "../services/eventsRepository": {},
     "../theme/colors": colors, "../theme/spacing": spacing,
   }).default();
-  assert.deepEqual(screen.props.children.map((item) => item.type), ["HeroSection", "BeaconSpotlight", "PillarGrid", "Text"]);
+  assert.deepEqual(screen.props.children.map((item) => item.type), ["HeroSection", "BeaconSpotlight", "HomePanelGrid", "Text"]);
+  assert.equal(screen.props.children[2].props.alertCount, 0);
   assert.deepEqual(screen.props.children[1].props.events.map((event) => event.id), ["eligible"]);
   assert.equal(screen.props.children[3].props.children, homeContent.closing);
 });

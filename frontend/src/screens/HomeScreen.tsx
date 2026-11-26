@@ -4,7 +4,7 @@ import { StyleSheet, Text } from "react-native";
 
 import { BeaconSpotlight } from "../components/home/BeaconSpotlight";
 import { HeroSection } from "../components/home/HeroSection";
-import { PillarGrid } from "../components/home/PillarGrid";
+import { HomePanelGrid } from "../components/home/HomePanelGrid";
 import { Screen } from "../components/Screen";
 import { homeContent } from "../constants/homeContent";
 import { isBeaconWindow } from "../lib/beacon";
@@ -63,7 +63,7 @@ export default function HomeScreen() {
     <Screen edges={["top", "left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
       <HeroSection alertCount={alertCount} changedCount={changedCount} updatesError={updatesError} />
       <BeaconSpotlight events={goingEvents.filter((event) => isBeaconWindow(event, now))} loadError={loadError} onRetry={() => setRetry((value) => value + 1)} />
-      <PillarGrid />
+      <HomePanelGrid alertCount={alertCount} />
       <Text style={styles.closing}>{homeContent.closing}</Text>
     </Screen>
   );

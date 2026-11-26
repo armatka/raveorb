@@ -1,3 +1,5 @@
+import { colors } from "../theme/colors";
+
 export const homeContent = {
   hero: {
     headline: "Discover the scene. Live the night. Get home safe.",
@@ -24,12 +26,14 @@ export const homeContent = {
     loadError: "Some Going events could not be loaded.",
     retry: "Retry loading Going events",
   },
-  pillars: [
-    { key: "discover", title: "Find Your Night", body: "Every rave, warehouse party and festival near you, filtered to your sound.", route: "/(tabs)/events", icon: "compass-outline" },
-    { key: "capture", title: "Capture the Moment", body: "Log the sets, the tracks, the photos and how it felt before the memory fades.", route: "/(tabs)/nights", icon: "book-outline" },
+  panels: [
+    { key: "discover", title: "Find Your Night", subtitle: "Every rave, warehouse party and festival near you, filtered to your sound.", route: "/(tabs)/events", icon: "compass-outline", accent: colors.secondary, testID: "home-panel-discover" },
+    { key: "capture", title: "Capture the Moment", subtitle: "Log the sets, the tracks, the photos and how it felt before the memory fades.", route: "/(tabs)/nights", icon: "book-outline", accent: colors.accent, testID: "home-panel-capture" },
     // TODO: Add a crew destination when a social/people screen exists.
-    { key: "connect", title: "Find Your Crew", body: "Meet people who move to the same music and plan the next one together.", route: null, icon: "people-outline" },
-    { key: "orbit", title: "Your Orbit", body: "Every night adds up to your story. Look back on your year in music and share it.", route: "/orbit", icon: "planet-outline" },
+    { key: "connect", title: "Find Your Crew", subtitle: "Meet people who move to the same music and plan the next one together.", route: null, icon: "people-outline", accent: colors.platinum, testID: "home-panel-connect", comingSoon: true },
+    { key: "orbit", title: "Your Orbit", subtitle: "Every night adds up to your story. Look back on your year in music and share it.", route: "/orbit", icon: "planet-outline", accent: colors.primary, testID: "home-panel-orbit" },
+    { key: "profile", title: "My RaveOrb", subtitle: "Your nights, stats, and personal music story.", route: "/my-raveorb", icon: "person-circle-outline", accent: colors.secondary, testID: "home-panel-profile" },
+    { key: "artist-alerts", title: "Artist Alert", subtitle: "See upcoming events from artists you follow.", route: "/artist-alerts", icon: "notifications-outline", accent: colors.accent, testID: "home-panel-artist-alerts" },
   ],
   comingSoon: "Coming soon",
   closing: "From first beat to safe home: RaveOrb.",
