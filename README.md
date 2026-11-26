@@ -1,6 +1,6 @@
 # RaveOrb
 
-RaveOrb is an Expo app for discovering electronic music events and keeping a personal journal of nights, artists, venues, friends, photos, and memories. The Home, Discovery, My Nights, Venues, and Stats views run on iOS, Android, and web.
+RaveOrb is an Expo app for discovering electronic music events and keeping a personal journal of nights, artists, venues, friends, photos, and memories. Home, Discovery, My Nights, Calendar, Venues, and Stats run on iOS, Android, and web; Venues opens from Home.
 
 ## Architecture
 
@@ -8,6 +8,7 @@ RaveOrb is an Expo app for discovering electronic music events and keeping a per
 - The frontend event repository uses bundled sample events only when `EXPO_PUBLIC_API_BASE_URL` is unset. When configured, Discovery reads Ticketmaster through the Express API; API errors are shown rather than silently falling back to samples.
 - The Express API normalizes Ticketmaster Discovery API v2 responses and keeps `TICKETMASTER_API_KEY` on the server. Venue and stats endpoints continue to use local development data.
 - Nights and personal event statuses are stored locally with AsyncStorage. On native devices, selected photos are copied to app-managed document storage. Old Nights without a currency are migrated to USD; unsupported or malformed stored records are not overwritten.
+- Calendar groups saved Interested, Going, and Attended events and Nights by their local dates. It works from saved details offline, and links past Going events without a Night to the journal. Calendar backfills legacy missing snapshots or source IDs in batches of at most 50, three requests at a time; failed lookups retry on a later refresh.
 - Stats are computed from local Nights and group spending by currency without conversion. Journal data is device-local and is not synced or backed up by the app.
 - Orbit unlocks after three Nights in a year. Its style uses up to 50 linked event lookups, and weekends are grouped by Friday using the Night's date. Spending excludes zero values because an unfilled cost is stored as zero. The share image excludes photos, notes and moments; friends and spending are opt-in. Image sharing is available on supported iOS and Android devices, including Expo Go.
 - In development builds, My RaveOrb can load eight sample 2026 Nights or remove Nights whose event name starts with `[Sample]`.
@@ -92,7 +93,7 @@ Event detail lookups check the other provider for matches on the local date or a
 
 Discovery hides cancelled events by default; `GET /api/events?...&includeCancelled=true` includes them. Approved community events remain available by ID after cancellation, postponement, or their date passing. Ticketmaster `offsale` is not treated as sold out. Pagination totals remain provider totals and can include filtered events.
 
-On-device Going/Interested entries include an acknowledged event snapshot. Home and Your events refresh up to 25 upcoming snapshots at most once per six hours, rotating through larger lists, and show dismissible in-app changes. Past events are not refreshed or shown as changes. Existing statuses without snapshots are preserved and receive a baseline when their event appears in Discovery or is marked again; earlier changes cannot be reconstructed. There are no push notifications. Refresh failures are shown and retried on a later refresh window.
+On-device statuses may include an acknowledged event snapshot. Home and Your events refresh up to 25 upcoming Going/Interested snapshots at most once per six hours, rotating through larger lists, and show dismissible in-app changes. Past events are not refreshed as changes. Calendar attempts to backfill missing snapshots and source IDs without changing an existing acknowledged snapshot; earlier changes cannot be reconstructed. There are no push notifications. Refresh failures are shown and retried on a later refresh.
 
 To add a provider:
 1. Implement `EventProvider`, mapping its results to `EventEntry` and reading credentials at request time.
@@ -151,7 +152,8 @@ The regression tests mock native storage and file APIs; they do not replace test
 
 Run on iOS and Android, including a notched or Dynamic Island device, and on web:
 
-- [ ] Open `/`, `/events`, `/nights`, `/venues`, and `/stats` directly and via tabs. Switch tabs with filters set and confirm state remains intact; check for duplicate-route or console warnings.
+- [ ] Open Home, Events, Nights, Calendar, and Stats directly and via tabs; open Venues from Home. Switch tabs with filters set and confirm state remains intact; check for duplicate-route or console warnings.
+- [ ] Check Calendar month navigation, device week start, filters, saved events and Nights, linked-Night deduplication, and offline behavior.
 - [ ] Open `/event/[id]`, `/night/new`, `/night/[id]`, and `/night/[id]/edit` from the app and directly. Verify back navigation and missing-ID states.
 - [ ] Check status bar, cutouts, tab bar, and home indicator in portrait and supported display sizes. Confirm there is no overlap or doubled safe-area spacing.
 - [ ] Use VoiceOver or TalkBack and keyboard navigation: identify controls, announce selected filters and ratings, reach edit and delete separately, and check 44-point targets and contrast.
