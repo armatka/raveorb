@@ -4,6 +4,7 @@ import { StyleSheet, Text } from "react-native";
 
 import { BeaconSpotlight } from "../components/home/BeaconSpotlight";
 import { HomeHero } from "../components/home/HomeHero";
+import { HomeIconBar } from "../components/home/HomeIconBar";
 import { HomePanelGrid } from "../components/home/HomePanelGrid";
 import { Screen } from "../components/Screen";
 import { homeContent } from "../constants/homeContent";
@@ -61,7 +62,8 @@ export default function HomeScreen() {
 
   return (
     <Screen edges={["top", "left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
-      <HomeHero alertCount={alertCount} changedCount={changedCount} updatesError={updatesError} />
+      <HomeIconBar alertCount={alertCount} />
+      <HomeHero changedCount={changedCount} updatesError={updatesError} />
       <BeaconSpotlight events={goingEvents.filter((event) => isBeaconWindow(event, now))} loadError={loadError} onRetry={() => setRetry((value) => value + 1)} />
       <HomePanelGrid alertCount={alertCount} />
       <Text style={styles.closing}>{homeContent.closing}</Text>

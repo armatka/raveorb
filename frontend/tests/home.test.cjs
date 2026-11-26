@@ -49,7 +49,7 @@ test("home hero sizes and centers the logo, preserves links and CTAs, and routes
     "../Logo": "Logo",
     "./HomeButton": { HomeButton: "HomeButton" },
   });
-  const screen = HomeHero({ alertCount: 2, changedCount: 1, updatesError: true });
+  const screen = HomeHero({ changedCount: 1, updatesError: true });
   const logo = find(screen, (element) => element.type === "Logo")[0];
   assert.equal(logo.props.size, 195);
   assert.equal(logo.props.animated, true);
@@ -57,9 +57,7 @@ test("home hero sizes and centers the logo, preserves links and CTAs, and routes
   assert.deepEqual(buttons.map((button) => button.props.label), [homeContent.hero.primaryCta, homeContent.hero.secondaryCta]);
   buttons.forEach((button) => button.props.onPress());
   find(screen, (element) => element.type === "Pressable").forEach((item) => item.props.onPress());
-  assert.deepEqual(paths, [
-    "/(tabs)/events", "/event-changes", "/my-raveorb", "/artist-alerts", "/event-changes",
-  ]);
+  assert.deepEqual(paths, ["/(tabs)/events", "/event-changes", "/event-changes"]);
   assert.ok(find(screen, (element) => element.type === "Text" && element.props.children === homeContent.hero.updatesError).length);
 });
 
@@ -73,11 +71,34 @@ test("home hero disables the logo pulse when unfocused or reduced motion is enab
       "../Logo": "Logo",
       "./HomeButton": { HomeButton: "HomeButton" },
     });
-    const screen = HomeHero({ alertCount: 0, changedCount: 0, updatesError: false });
+    const screen = HomeHero({ changedCount: 0, updatesError: false });
     const logo = find(screen, (element) => element.type === "Logo")[0];
     assert.equal(logo.props.size, 280);
     assert.equal(logo.props.animated, animated);
   }
+});
+
+test("home icon bar preserves profile and artist-alert routes with accessible 44pt targets", () => {
+  const paths = [];
+  const { HomeIconBar } = load("components/home/HomeIconBar.tsx", {
+    ...base,
+    "react-native": rn,
+    "@expo/vector-icons": icon,
+    "expo-router": { router: { push: (route) => paths.push(route) } },
+  });
+  const bar = HomeIconBar({ alertCount: 7 });
+  const buttons = find(bar, (element) => element.type === "Pressable");
+  assert.deepEqual(buttons.map((button) => button.props.accessibilityLabel), [
+    homeContent.hero.profile, homeContent.hero.artistAlertsCount(7),
+  ]);
+  assert.ok(buttons.every((button) => button.props.accessibilityRole === "button"));
+  assert.deepEqual(buttons.map((button) => button.props.testID), ["home-profile-button", "home-artist-alerts-button"]);
+  const buttonStyle = buttons[0].props.style({ pressed: false })[0];
+  assert.equal(buttonStyle.width, theme.theme.touchTarget);
+  assert.equal(buttonStyle.height, theme.theme.touchTarget);
+  assert.equal(find(buttons[1], (element) => element.type === "Text")[0].props.children, "7");
+  buttons.forEach((button) => button.props.onPress());
+  assert.deepEqual(paths, ["/my-raveorb", "/artist-alerts"]);
 });
 
 test("Logo uses an explicit size without clamping and stops its pulse when animation is disabled", () => {
@@ -245,6 +266,7 @@ test("Home retains the requested section order and only passes eligible events t
     "react-native": rn,
     "../components/home/BeaconSpotlight": { BeaconSpotlight: "BeaconSpotlight" },
     "../components/home/HomeHero": { HomeHero: "HomeHero" },
+    "../components/home/HomeIconBar": { HomeIconBar: "HomeIconBar" },
     "../components/home/HomePanelGrid": { HomePanelGrid: "HomePanelGrid" },
     "../components/Screen": { Screen: "Screen" },
     "../constants/homeContent": { homeContent },
@@ -254,8 +276,9 @@ test("Home retains the requested section order and only passes eligible events t
     "../services/artistAlertsService": {}, "../services/eventChangesService": {}, "../services/eventsRepository": {},
     "../theme/colors": colors, "../theme/spacing": spacing,
   }).default();
-  assert.deepEqual(screen.props.children.map((item) => item.type), ["HomeHero", "BeaconSpotlight", "HomePanelGrid", "Text"]);
-  assert.equal(screen.props.children[2].props.alertCount, 0);
-  assert.deepEqual(screen.props.children[1].props.events.map((event) => event.id), ["eligible"]);
-  assert.equal(screen.props.children[3].props.children, homeContent.closing);
+  assert.deepEqual(screen.props.children.map((item) => item.type), ["HomeIconBar", "HomeHero", "BeaconSpotlight", "HomePanelGrid", "Text"]);
+  assert.equal(screen.props.children[0].props.alertCount, 0);
+  assert.equal(screen.props.children[3].props.alertCount, 0);
+  assert.deepEqual(screen.props.children[2].props.events.map((event) => event.id), ["eligible"]);
+  assert.equal(screen.props.children[4].props.children, homeContent.closing);
 });
