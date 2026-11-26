@@ -39,20 +39,76 @@ const base = {
 const rn = { Pressable: "Pressable", Text: "Text", View: "View", StyleSheet: { create: (styles) => styles } };
 const icon = { Ionicons: "Ionicons" };
 
-test("hero CTAs navigate to discovery and saved events, keeping existing profile and alert access", () => {
+test("home hero sizes and centers the logo, preserves links and CTAs, and routes notices", () => {
   const paths = [];
-  const { HeroSection } = load("components/home/HeroSection.tsx", {
-    ...base, "react-native": rn, "expo-image": { Image: "Image" },
-    "expo-router": { router: { push: (route) => paths.push(route) } },
-    "../../../assets/images/RaveOrbLogo2.png": "logo",
+  const { HomeHero } = load("components/home/HomeHero.tsx", {
+    ...base,
+    "react-native": { ...rn, useWindowDimensions: () => ({ width: 390, fontScale: 1 }) },
+    "expo-router": { router: { push: (route) => paths.push(route) }, useIsFocused: () => true },
+    "../../lib/useReduceMotion": { useReduceMotion: () => false },
+    "../Logo": "Logo",
     "./HomeButton": { HomeButton: "HomeButton" },
   });
-  const screen = HeroSection({ alertCount: 0, changedCount: 0, updatesError: false });
+  const screen = HomeHero({ alertCount: 2, changedCount: 1, updatesError: true });
+  const logo = find(screen, (element) => element.type === "Logo")[0];
+  assert.equal(logo.props.size, 195);
+  assert.equal(logo.props.animated, true);
   const buttons = find(screen, (element) => element.type === "HomeButton");
   assert.deepEqual(buttons.map((button) => button.props.label), [homeContent.hero.primaryCta, homeContent.hero.secondaryCta]);
   buttons.forEach((button) => button.props.onPress());
   find(screen, (element) => element.type === "Pressable").forEach((item) => item.props.onPress());
-  assert.deepEqual(paths, ["/(tabs)/events", "/event-changes", "/my-raveorb", "/artist-alerts"]);
+  assert.deepEqual(paths, [
+    "/(tabs)/events", "/event-changes", "/my-raveorb", "/artist-alerts", "/event-changes",
+  ]);
+  assert.ok(find(screen, (element) => element.type === "Text" && element.props.children === homeContent.hero.updatesError).length);
+});
+
+test("home hero disables the logo pulse when unfocused or reduced motion is enabled", () => {
+  for (const [focused, reduceMotion, animated] of [[false, false, false], [true, true, false], [true, false, true]]) {
+    const { HomeHero } = load("components/home/HomeHero.tsx", {
+      ...base,
+      "react-native": { ...rn, useWindowDimensions: () => ({ width: 800, fontScale: 1 }) },
+      "expo-router": { router: { push() {} }, useIsFocused: () => focused },
+      "../../lib/useReduceMotion": { useReduceMotion: () => reduceMotion },
+      "../Logo": "Logo",
+      "./HomeButton": { HomeButton: "HomeButton" },
+    });
+    const screen = HomeHero({ alertCount: 0, changedCount: 0, updatesError: false });
+    const logo = find(screen, (element) => element.type === "Logo")[0];
+    assert.equal(logo.props.size, 280);
+    assert.equal(logo.props.animated, animated);
+  }
+});
+
+test("Logo uses an explicit size without clamping and stops its pulse when animation is disabled", () => {
+  const effects = [];
+  const pulse = { value: 0.8 };
+  let cancelCount = 0;
+  const { default: Logo } = load("components/Logo.tsx", {
+    react: { useEffect: (effect) => effects.push(effect) },
+    "react-native": { ...rn, useWindowDimensions: () => ({ width: 200 }) },
+    "expo-image": { Image: "Image" },
+    "expo-linear-gradient": { LinearGradient: "LinearGradient" },
+    "../theme/theme": theme,
+    "react-native-reanimated": {
+      __esModule: true,
+      default: { View: "AnimatedView" },
+      cancelAnimation: () => { cancelCount++; },
+      Easing: { inOut: (value) => value, ease: "ease" },
+      useAnimatedStyle: (callback) => callback(),
+      useSharedValue: () => pulse,
+      withRepeat: () => "repeating-animation",
+      withSequence: (...values) => values,
+      withTiming: (value) => value,
+    },
+    "../../assets/images/RaveOrbLogo2.png": "logo",
+  });
+  const view = Logo({ size: 300, animated: false });
+  const wrapper = view.props.style[1];
+  assert.deepEqual(wrapper, { width: 300, height: 300, padding: 7.5 });
+  effects[0]();
+  assert.equal(pulse.value, 0);
+  assert.equal(cancelCount, 1);
 });
 
 test("home panel grid contains all six panels in order and preserves their routes", () => {
@@ -188,7 +244,7 @@ test("Home retains the requested section order and only passes eligible events t
     "expo-router": { useFocusEffect() {} },
     "react-native": rn,
     "../components/home/BeaconSpotlight": { BeaconSpotlight: "BeaconSpotlight" },
-    "../components/home/HeroSection": { HeroSection: "HeroSection" },
+    "../components/home/HomeHero": { HomeHero: "HomeHero" },
     "../components/home/HomePanelGrid": { HomePanelGrid: "HomePanelGrid" },
     "../components/Screen": { Screen: "Screen" },
     "../constants/homeContent": { homeContent },
@@ -198,7 +254,7 @@ test("Home retains the requested section order and only passes eligible events t
     "../services/artistAlertsService": {}, "../services/eventChangesService": {}, "../services/eventsRepository": {},
     "../theme/colors": colors, "../theme/spacing": spacing,
   }).default();
-  assert.deepEqual(screen.props.children.map((item) => item.type), ["HeroSection", "BeaconSpotlight", "HomePanelGrid", "Text"]);
+  assert.deepEqual(screen.props.children.map((item) => item.type), ["HomeHero", "BeaconSpotlight", "HomePanelGrid", "Text"]);
   assert.equal(screen.props.children[2].props.alertCount, 0);
   assert.deepEqual(screen.props.children[1].props.events.map((event) => event.id), ["eligible"]);
   assert.equal(screen.props.children[3].props.children, homeContent.closing);
