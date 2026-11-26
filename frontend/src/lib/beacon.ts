@@ -74,7 +74,7 @@ export function buildPlanMessage(event: Pick<EventEntry, "title" | "venueName" |
   return lines.join("\n");
 }
 
-export function nightPrefill(event: EventEntry, sets: SetTime[]) {
+export function nightPrefill(event: Pick<EventEntry, "id" | "sourceEventId" | "title" | "venueName" | "city" | "date" | "artists">, sets: SetTime[]) {
   const artists = sets.map((set) => set.artist.trim()).filter(Boolean);
   return {
     sourceEventId: event.sourceEventId ?? event.id,

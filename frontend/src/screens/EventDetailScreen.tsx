@@ -19,6 +19,7 @@ import { ScreenHeader } from "../components/ScreenHeader";
 import { buildCalendarEventDetails } from "../lib/calendarEventDetails";
 import { calendarLinkStorage } from "../lib/calendarLinkStorage";
 import { eventStatusStorage, type EventStatus } from "../lib/eventStatusStorage";
+import type { EventSnapshot } from "../lib/eventChanges";
 import { formatEventDate, formatEventPrice, formatEventSchedule } from "../lib/eventFormatting";
 import { nightsStorage } from "../lib/nightsStorage";
 import { isBeaconWindow } from "../lib/beacon";
@@ -47,6 +48,7 @@ export default function EventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const followed = useFollowedArtists();
   const [event, setEvent] = useState<EventEntry | null>(null);
+  const [savedSnapshot, setSavedSnapshot] = useState<EventSnapshot | null>(null);
   const [status, setStatus] = useState<EventStatus | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [linkedNightId, setLinkedNightId] = useState<string | null>(null);
@@ -70,6 +72,7 @@ export default function EventDetailScreen() {
 
       if (!id) {
         setEvent(null);
+        setSavedSnapshot(null);
         setEventError(null);
         setLoadingEvent(false);
         setStatus(null);
@@ -88,6 +91,7 @@ export default function EventDetailScreen() {
       }
 
       setLoadingEvent(true);
+      setSavedSnapshot(null);
       setEventError(null);
       setLoadingStatus(true);
       setLoadingNight(true);
@@ -98,7 +102,8 @@ export default function EventDetailScreen() {
         nightsStorage.getBySourceEventId(id),
         calendarService.resolveLinkedEvent(id),
         festivalPlannerStorage.get(id),
-      ]).then(([eventResult, statusResult, linkedNightResult, calendarResult, planResult]) => {
+        eventStatusStorage.listTracked(),
+      ]).then(([eventResult, statusResult, linkedNightResult, calendarResult, planResult, savedResult]) => {
         if (!isCurrent) return;
 
         if (eventResult.status === "fulfilled") {
@@ -109,6 +114,10 @@ export default function EventDetailScreen() {
           setEventError(eventResult.reason instanceof Error ? eventResult.reason.message : "Could not load this event.");
         }
         setStatus(statusResult.status === "fulfilled" ? statusResult.value : null);
+        if (savedResult.status === "fulfilled") {
+          const entry = savedResult.value[id];
+          setSavedSnapshot(entry?.latest ?? entry?.snapshot ?? null);
+        }
         setLinkedNightId(linkedNightResult.status === "fulfilled" ? linkedNightResult.value?.id ?? null : null);
         setStatusError(statusResult.status === "rejected");
         setNightError(linkedNightResult.status === "rejected");
@@ -137,6 +146,21 @@ export default function EventDetailScreen() {
       <Screen edges={["left", "right", "bottom"]}>
         <ScreenHeader onBack={() => goBackOrReplace("/(tabs)/events")} />
         <ActivityIndicator color={colors.primary} style={styles.statusLoader} />
+      </Screen>
+    );
+  }
+
+  if ((!event || eventError) && savedSnapshot) {
+    return (
+      <Screen edges={["left", "right", "bottom"]} scrollable contentContainerStyle={styles.content}>
+        <ScreenHeader onBack={() => goBackOrReplace("/(tabs)/calendar")} />
+        <Text style={styles.changeBannerTitle}>{savedSnapshot.title}</Text>
+        <Text style={styles.changeBannerNote}>{savedSnapshot.date} · {savedSnapshot.startTime}</Text>
+        <Text style={styles.changeBannerNote}>{[savedSnapshot.venueName, savedSnapshot.city].filter(Boolean).join(" · ")}</Text>
+        <Text style={styles.changeBannerNote}>Showing saved details. Full event details are unavailable.</Text>
+        <Pressable onPress={retryLoading} style={styles.secondaryButton} accessibilityRole="button">
+          <Text style={styles.secondaryButtonText}>Retry</Text>
+        </Pressable>
       </Screen>
     );
   }

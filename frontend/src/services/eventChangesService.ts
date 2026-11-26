@@ -8,10 +8,10 @@ import { eventsRepository } from "./eventsRepository";
 export type TrackedEventChanges = { id: string; entry: TrackedEvent; changes: EventChange[] };
 let inFlight: Promise<void> | undefined;
 
-export async function refreshTrackedEvents(): Promise<void> {
+export async function refreshTrackedEvents(skipIds: ReadonlySet<string> = new Set()): Promise<void> {
   if (inFlight) return inFlight;
   const refresh = (async () => {
-    const ids = await eventStatusStorage.reserveRefresh();
+    const ids = await eventStatusStorage.reserveRefresh(new Date(), skipIds);
     const results = await Promise.allSettled(ids.map(async (id) => {
       const event = await eventsRepository.getEvent(id);
       if (!event) throw new Error("A saved event is no longer available.");

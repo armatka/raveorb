@@ -7,6 +7,7 @@ export const homeContent = {
     primaryCta: "Find events near me",
     secondaryCta: "Light your Beacon",
     profile: "My RaveOrb",
+    venues: "Venues",
     artistAlerts: "Artist alerts",
     artistAlertsCount: (count: number) => `Artist alerts (${count})`,
     changes: (count: number) => count === 1 ? "1 of your events changed" : `${count} of your events changed`,

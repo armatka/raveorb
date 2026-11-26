@@ -19,6 +19,8 @@ function isSnapshot(value: unknown): value is EventSnapshot {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const item = value as Record<string, unknown>;
   return ["title", "date", "startTime", "venueName", "city", "timezone"].every((key) => typeof item[key] === "string")
+    && (item.sourceEventId === undefined || typeof item.sourceEventId === "string")
+    && (item.artists === undefined || (Array.isArray(item.artists) && item.artists.every((artist: unknown) => typeof artist === "string")))
     && (item.status === undefined || ["scheduled", "cancelled", "postponed", "rescheduled", "sold-out"].includes(String(item.status)));
 }
 
@@ -74,7 +76,9 @@ export const eventStatusStorage = {
       if (status === null) delete entries[eventId];
       else {
         const previous = entries[eventId];
-        const snapshot = previous?.snapshot ?? (event ? snapshotEvent(event) : undefined);
+        const snapshot = previous?.snapshot
+          ? event ? enrichSnapshot(previous.snapshot, event) : previous.snapshot
+          : event ? snapshotEvent(event) : undefined;
         entries[eventId] = { ...previous, status, ...(snapshot ? { snapshot } : {}) };
       }
       return { data: { ...data, entries }, result: undefined };
@@ -89,21 +93,21 @@ export const eventStatusStorage = {
       let changed = false;
       for (const event of events) {
         const entry = entries[event.id];
-        if (entry && !entry.snapshot && (entry.status === "going" || entry.status === "interested")) {
-          entries[event.id] = { ...entry, snapshot: snapshotEvent(event) };
+        if (entry && (!entry.snapshot || !entry.snapshot.sourceEventId || !entry.snapshot.artists)) {
+          entries[event.id] = { ...entry, snapshot: entry.snapshot ? enrichSnapshot(entry.snapshot, event) : snapshotEvent(event) };
           changed = true;
         }
       }
       return { data: changed ? { ...data, entries } : data, result: undefined };
     });
   },
-  async reserveRefresh(now = new Date()): Promise<string[]> {
+  async reserveRefresh(now = new Date(), skipIds: ReadonlySet<string> = new Set()): Promise<string[]> {
     return updateAll((data) => {
       const timestamp = now.getTime();
       if (data.lastRefresh !== undefined && timestamp - data.lastRefresh < refreshIntervalMs) return { data, result: [] };
-      const ids = Object.entries(data.entries).filter(([, entry]) =>
+      const ids = Object.entries(data.entries).filter(([id, entry]) =>
         (entry.status === "going" || entry.status === "interested")
-        && entry.snapshot && isEventUpcoming(entry.snapshot, now)
+        && !skipIds.has(id) && entry.snapshot && isEventUpcoming(entry.snapshot, now)
         && (!entry.latest || isEventUpcoming(entry.latest, now))).map(([id]) => id).sort();
       if (!ids.length) return { data, result: [] };
       const start = data.cursor % ids.length;
@@ -115,7 +119,7 @@ export const eventStatusStorage = {
     await updateAll((data) => {
       const entry = data.entries[eventId];
       if (!entry || !entry.snapshot || (entry.status !== "going" && entry.status !== "interested")) return { data, result: undefined };
-      return { data: { ...data, entries: { ...data.entries, [eventId]: { ...entry, latest: snapshotEvent(event) } } }, result: undefined };
+      return { data: { ...data, entries: { ...data.entries, [eventId]: { ...entry, snapshot: enrichSnapshot(entry.snapshot, event), latest: snapshotEvent(event) } } }, result: undefined };
     });
   },
   async dismiss(eventId: string, kind: EventChangeKind): Promise<void> {
@@ -126,3 +130,11 @@ export const eventStatusStorage = {
     });
   },
 };
+
+function enrichSnapshot(snapshot: EventSnapshot, event: EventEntry): EventSnapshot {
+  return {
+    ...snapshot,
+    sourceEventId: snapshot.sourceEventId || event.sourceEventId?.trim() || event.id,
+    artists: snapshot.artists ?? event.artists,
+  };
+}
