@@ -40,6 +40,12 @@
           "calendarPermission": "RaveOrb adds events you choose to your calendar."
         }
       ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "RaveOrb uses your location only when you choose to include it in a shared plan."
+        }
+      ],
       "@react-native-community/datetimepicker"
     ]
   }

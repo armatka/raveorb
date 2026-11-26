@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 
 import { openArtist } from "../components/ArtistLinks";
 import { EmptyState } from "../components/EmptyState";
@@ -14,6 +14,7 @@ import { formatCurrency } from "../lib/formatCurrency";
 import { goBackOrReplace } from "../lib/navigation";
 import { calculateNightStats, calculateProfileStats } from "../lib/nightStats";
 import { nightsStorage } from "../lib/nightsStorage";
+import { setBeaconDevOverride, useBeaconDevOverrides } from "../lib/beaconDevOverrides";
 import { loadSampleNights, removeSampleNights } from "../lib/sampleNights";
 import { showAlert } from "../lib/showAlert";
 import { eventsRepository } from "../services/eventsRepository";
@@ -33,6 +34,7 @@ export default function MyRaveOrbScreen() {
   const [selectedYear, setSelectedYear] = useState<string | null>(null);
   const [sampleBusy, setSampleBusy] = useState(false);
   const sampleBusyRef = useRef(false);
+  const beaconOverrides = useBeaconDevOverrides();
 
   useFocusEffect(useCallback(() => {
     let active = true;
@@ -165,8 +167,17 @@ export default function MyRaveOrbScreen() {
       {__DEV__ ? (
         <View style={styles.sampleActions}>
           <Section title="DEVELOPER TOOLS" />
+          <Text style={styles.muted}>Loading samples also adds a fictional Going event starting in about two hours.</Text>
           <Action label="Load sample Nights" icon="add" onPress={() => runSampleAction("load")} disabled={sampleBusy || loading} />
           <Action label="Remove sample Nights" icon="trash-outline" onPress={() => runSampleAction("remove")} disabled={sampleBusy || loading} />
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Force Beacon window</Text>
+            <Switch accessibilityLabel="Force Beacon window" value={beaconOverrides.forceWindow} onValueChange={(value) => setBeaconDevOverride("forceWindow", value)} />
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Force after event</Text>
+            <Switch accessibilityLabel="Force after event" value={beaconOverrides.forceAfterEvent} onValueChange={(value) => setBeaconDevOverride("forceAfterEvent", value)} />
+          </View>
         </View>
       ) : null}
     </Screen>

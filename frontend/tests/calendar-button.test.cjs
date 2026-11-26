@@ -5,7 +5,7 @@ const Module = require("node:module");
 const test = require("node:test");
 const ts = require("typescript");
 
-function renderScreen(available, dev) {
+function renderScreen(available, dev, options = {}) {
   const filename = path.resolve(__dirname, "../src/screens/EventDetailScreen.tsx");
   const output = ts.transpileModule(fs.readFileSync(filename, "utf8"), {
     compilerOptions: {
@@ -26,7 +26,10 @@ function renderScreen(available, dev) {
   loaded.require = (name) => {
     if (name === "react") return {
       useCallback: (callback) => callback,
-      useState: (initial) => [stateIndex++ === 0 ? event : typeof initial === "boolean" ? false : initial, () => {}],
+      useState: (initial) => {
+        const index = stateIndex++;
+        return [index === 0 ? event : index === 1 ? options.status ?? null : typeof initial === "boolean" ? false : initial, () => {}];
+      },
     };
     if (name === "expo-router") return { router: {}, useFocusEffect() {}, useLocalSearchParams: () => ({ id: "event" }) };
     if (name === "@expo/vector-icons") return { Ionicons: component };
@@ -41,6 +44,8 @@ function renderScreen(available, dev) {
     if (name === "../lib/eventFormatting") return {
       formatEventDate: () => "", formatEventPrice: () => "", formatEventSchedule: () => "",
     };
+    if (name === "../lib/beacon") return { isBeaconWindow: () => options.inWindow ?? false };
+    if (name === "../lib/beaconDevOverrides") return { useBeaconDevOverrides() {} };
     if (name === "../services/calendarService") return { calendarService: { isAvailable: () => available } };
     if (name === "../theme/colors") return { colors: {} };
     if (name === "../theme/spacing") return { spacing: { sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } };
@@ -76,6 +81,13 @@ test("unavailable calendar shows a disabled hint only in development", () => {
   assert.equal(buttons[0].props.disabled, true);
   assert.equal(buttons[0].props.accessibilityState.disabled, true);
   assert.equal(findElements(renderScreen(false, false), (element) => element.props?.children === hint).length, 0);
+});
+
+test("Beacon entry appears only for Going events inside the window", () => {
+  const entry = (screen) => findElements(screen, (element) => element.props?.children === "Beacon");
+  assert.equal(entry(renderScreen(false, false, { status: "going", inWindow: true })).length, 1);
+  assert.equal(entry(renderScreen(false, false, { status: "going", inWindow: false })).length, 0);
+  assert.equal(entry(renderScreen(false, false, { status: "interested", inWindow: true })).length, 0);
 });
 
 test("available calendar shows the actionable button in a production build", () => {

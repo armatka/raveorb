@@ -14,6 +14,17 @@ module.exports = defineConfig([
     rules: { 'react-hooks/set-state-in-effect': 'warn' },
   },
   {
+    files: ['src/**/*.{js,jsx,ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          group: ['@react-navigation/*'],
+          message: 'Import navigation hooks from expo-router instead.',
+        }],
+      }],
+    },
+  },
+  {
     files: ['tests/**/*.cjs', 'eslint.config.js'],
     languageOptions: {
       sourceType: 'commonjs',

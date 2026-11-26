@@ -2,6 +2,7 @@ import { mockEvents, mockVenues } from "../data/mockData";
 import type { EventEntry, EventCurrency, EventStatus, EventType, RaveOrbCategory } from "../types/event";
 import { raveOrbCategories } from "../types/event";
 import type { Venue } from "../types/venue";
+import { SAMPLE_EVENT_ID_PREFIX, sampleEventStorage } from "../lib/sampleEvent";
 import { getEventsApiBaseUrl, hasEventsApi, readPageHeader, requestEventsApi, serializeEventsQuery, type EventsApiQuery } from "./eventsApi";
 
 export type EventQueryFilters = {
@@ -290,6 +291,10 @@ export const eventsRepository = {
   },
 
   async getEvent(id: string): Promise<EventEntry | null> {
+    if (id.startsWith(SAMPLE_EVENT_ID_PREFIX)) {
+      const event = await sampleEventStorage.get();
+      return event?.id === id ? parseEvent(event) : null;
+    }
     if (!hasEventsApi()) return mockEvents.find((event) => event.id === id) ?? null;
     try {
       const { payload } = await requestEventsApi(`/api/events/${encodeURIComponent(id)}`);
