@@ -6,3 +6,5 @@
 - Add or update tests for every behaviour change.
 - Do not add dependencies without asking first.
 - Before editing, explain your plan briefly. After editing, run the relevant checks and report the results.
+- Every change must update the relevant docs in docs/ (the feature doc in docs/features/, docs/architecture.md if the structure changes, docs/decisions.md for any new decision) and add an entry to docs/CHANGELOG.md.
+- Never put secrets or .env values in docs.
